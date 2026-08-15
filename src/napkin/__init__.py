@@ -6,7 +6,7 @@ static loads, small deflections, room temperature. US customary throughout
 
 Ported from MechEng_HandCalcs.xlsx.
 
-    >>> from mecheng import beams, sections
+    >>> from napkin import beams, sections
     >>> s = sections.round_tube(od=1.5, id=1.25)
     >>> r = beams.analyze("cant_point", L=20, section=s, material="Al 6061-T6", P=500)
     >>> round(r.sf, 2)

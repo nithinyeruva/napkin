@@ -1,4 +1,4 @@
-# mecheng
+# napkin
 
 Python port of `~/Projects/MechEng_HandCalcs.xlsx` — mechanical engineering hand
 calcs for preliminary sizing.

@@ -1,4 +1,4 @@
-# mecheng
+# napkin
 
 Mechanical engineering hand calcs — beams, plates, columns, shafts, bolts,
 pressure vessels, cooling lines.
@@ -9,7 +9,7 @@ solutions. Static loads, small deflections, room temperature. Ported from
 own computed values.
 
 ```python
-from mecheng import beams, sections
+from napkin import beams, sections
 
 s = sections.round_tube(od=1.5, id=1.25)
 r = beams.analyze("cant_point", L=20, section=s, material="Al 6061-T6", P=500)
@@ -68,7 +68,7 @@ plates.circular(a=3, q=200, t=0.75, material="Tool steel P20 (30 HRC)").required
 US customary throughout: inches, lbf, psi, °F. Convert at the boundary:
 
 ```python
-from mecheng import units
+from napkin import units
 units.convert(100, "psi", "MPa")
 ```
 

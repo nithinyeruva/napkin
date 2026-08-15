@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from mecheng import beams, bolts, columns, cooling, plates, pressure, sections, shafts, units
+from napkin import beams, bolts, columns, cooling, plates, pressure, sections, shafts, units
 
 
 def close(actual, expected, rel=1e-9):
@@ -157,7 +157,7 @@ class TestShafts:
 
     def test_shear_modulus(self):
         r = shafts.analyze(d=0.75, material="Steel 4140 (Q&T 28 HRC)", M=200, T=180, L=12)
-        from mecheng.materials import get
+        from napkin.materials import get
         close(get("Steel 4140 (Q&T 28 HRC)").G, 11511627.9069767)
 
 
@@ -288,7 +288,7 @@ class TestResultRendering:
         assert "Shigley" in md
 
     def test_safety_factor_classification(self):
-        from mecheng import classify_sf
+        from napkin import classify_sf
         assert classify_sf(0.9) == "FAIL"
         assert classify_sf(1.2) == "MARGINAL"
         assert classify_sf(2.0) == "OK"

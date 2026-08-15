@@ -70,7 +70,7 @@ def analyze(
     Args:
         case: one of `CASES` — e.g. "cant_point".
         L: span or cantilever length, in.
-        section: from `mecheng.sections`.
+        section: from `napkin.sections`.
         material: a Material or its name.
         P: point load, lbf (point-load cases).
         w: distributed load, lbf/in (uniform cases).

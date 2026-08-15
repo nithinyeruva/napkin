@@ -1,0 +1,51 @@
+# mecheng
+
+Python port of `~/Projects/MechEng_HandCalcs.xlsx` — mechanical engineering hand
+calcs for preliminary sizing.
+
+## Status
+
+Phase 1 complete: all 11 workbook sheets ported, 54 tests passing.
+
+Planned next: a web UI over the same formulas, published as an artifact so the
+calculators are usable on a phone at the mill. **The formulas must not be
+reimplemented in JavaScript** — one source of truth, or the two copies drift and
+one of them is silently wrong.
+
+## Conventions
+
+- **US customary internally.** Inches, lbf, psi, °F, BTU/hr. Convert at the
+  boundary with `units.convert`, never mid-calculation.
+- **Every calculator returns a `Result` subclass** carrying `inputs`, `outputs`,
+  `formula`, `reference` and `warnings`. The `markdown()` method is the point of
+  the whole design — hand calcs land in part design records without retyping.
+- **Warnings are load-bearing.** When an assumption stops holding (deflection
+  past t/2, t past r/10, Re below 4000, SF under target) the result says so.
+  Don't quietly drop them to tidy up output.
+- **Back-solve functions are named `required_*`** and take `target_sf`.
+- Materials accept either a `Material` or its name string.
+
+## Testing
+
+```bash
+pytest
+```
+
+Expected values in `tests/test_against_workbook.py` are the numbers the
+**spreadsheet itself computes** for its default inputs, read from the cached
+values in the xlsx. That's what makes the port verifiable rather than a
+plausible-looking rewrite. When adding a calculator, get its reference value the
+same way rather than from your own arithmetic.
+
+`--doctest-modules` is on, so docstring examples run as tests. Don't put a
+guessed number in a docstring — it will fail, correctly.
+
+## Accuracy notes
+
+- Rectangular plate β/α tables use Excel `VLOOKUP(..., TRUE)` semantics: step
+  **down** to the largest tabulated a/b not exceeding the actual ratio. Not
+  interpolation. `test_coefficient_lookup_steps_down` pins this.
+- Column K factors default to theoretical values; `use_aisc_k=True` gives the
+  AISC design values for real end fixity.
+- Shaft results are static only. Anything rotating needs a Shigley fatigue check
+  on top, which this package does not do.

@@ -340,6 +340,62 @@ tr:last-child td{border-bottom:0}
   overflow-x:auto;white-space:nowrap;
 }
 
+/* AI assist */
+.ai-set{margin-top:10px;padding-top:10px;border-top:1px solid var(--rule)}
+.ai-toggle{
+  font:inherit;font-size:11.5px;color:var(--ink-3);background:none;border:0;
+  cursor:pointer;padding:0;display:flex;align-items:center;gap:5px;
+}
+.ai-toggle:hover{color:var(--dye)}
+.ai-toggle .dot{width:6px;height:6px;border-radius:50%;background:var(--rule-2);flex:none}
+.ai-toggle .dot.on{background:var(--ok)}
+.ai-body{margin-top:9px}
+.ai-body p{margin:0 0 7px;font-size:11.5px;color:var(--ink-3);line-height:1.45}
+.ai-body a{color:var(--dye)}
+.ai-row{display:flex;gap:6px}
+.ai-row input{flex:1;font-family:var(--mono);font-size:12px}
+.thinking{
+  display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);
+}
+.thinking::before{
+  content:"";width:11px;height:11px;border:2px solid var(--rule-2);
+  border-top-color:var(--dye);border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.thinking::before{animation:none}}
+
+/* Predicted values — must never look like values you supplied */
+.pred{
+  border:1px dashed var(--warn)!important;background:var(--warn-bg)!important;
+}
+.predchip{
+  font-family:var(--mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--warn);background:var(--warn-bg);border-radius:4px;padding:1px 5px;
+  margin-left:5px;font-weight:600;vertical-align:1px;
+}
+.assume{
+  background:var(--warn-bg);border:1px solid transparent;border-radius:9px;
+  padding:11px 13px;margin-top:10px;
+}
+.assume .grouptitle{color:var(--warn)}
+.arow{
+  display:flex;gap:9px;align-items:baseline;padding:6px 0;
+  border-bottom:1px solid rgba(128,128,128,.15);font-size:12.5px;line-height:1.45;
+}
+.arow:last-of-type{border-bottom:0}
+.arow .af{font-family:var(--mono);font-size:11.5px;color:var(--warn);flex:none;min-width:74px}
+.arow .aw{color:var(--ink-2);flex:1}
+.arow .ax{
+  font:inherit;font-size:11px;font-family:var(--mono);border:0;background:none;
+  color:var(--ink-3);cursor:pointer;padding:2px 5px;border-radius:4px;flex:none;
+}
+.arow .ax:hover{background:var(--fail-bg);color:var(--fail)}
+.unclear{
+  font-size:12.5px;color:var(--ink-2);line-height:1.5;
+  padding:9px 11px;background:var(--sunk);border-radius:7px;margin-top:9px;
+}
+.unclear b{color:var(--ink)}
+
 /* Findings */
 .finding{
   display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.45;
@@ -1553,7 +1609,113 @@ function parseQuery(text){
   return {calc,confident,values:v,read,alts:ranked.filter(r=>r[1]>0).slice(1,4).map(r=>r[0])};
 }
 
-let startText="", parsed=null;
+/* ---- AI assist -------------------------------------------------------------
+   Rules run first and handle the common case for free. The model is called only
+   when the rules are unsure, which is where paying for it is actually worth it.
+
+   Only works on the self-hosted copy: a published artifact runs under a CSP that
+   blocks every external request, so `fetch` to the API is impossible there. The
+   feature is additive — no key, no network, no problem.                       */
+
+const AI_MODEL="claude-haiku-4-5";
+const keyGet=()=>{try{return localStorage.getItem("napkin.anthropicKey")||"";}catch(_){return "";}};
+const keySet=v=>{try{v?localStorage.setItem("napkin.anthropicKey",v)
+  :localStorage.removeItem("napkin.anthropicKey");}catch(_){}};
+
+// The model may only return field keys that actually exist on the calculator it
+// picked, so a hallucinated field name can't reach the UI.
+function aiSchema(){
+  const calcs=Object.entries(CALCS).map(([k,c])=>
+    `${k}: ${c.title}. Fields — ${c.fields.map(f=>
+      f.t==="select"?`${f.k} (one of: ${f.o.map(o=>o[0]).join("|")})`
+                    :`${f.k}${f.u?` [${f.u}]`:""}`).join(", ")}`).join("\n");
+  return {calcs};
+}
+
+const AI_SYSTEM=`You route mechanical engineering sizing questions to a calculator and pre-fill what you can.
+
+Calculators and their exact field keys:
+{{CALCS}}
+
+Rules:
+- Pick the single best calculator. If genuinely unsure, say so in "unclear".
+- "values" may only use field keys listed for the calculator you picked.
+- All values are US customary: inches, lbf, psi, F, BTU/hr, GPM, RPM, HP. Convert if the user writes metric.
+- "predicted" must list every field key in "values" that you inferred rather than read from the text. This is the most important field you produce — an engineer will trust an unmarked value.
+- A value is READ if the user stated it (even loosely: "about 8 inches" is read). It is PREDICTED if you supplied it from typical practice, or derived it from something else they said.
+- Only predict a value when a sensible default genuinely exists. Leave it out rather than guessing wildly. Fewer, better guesses.
+- For each predicted value give a short "why" — the actual reason an engineer would accept it ("typical wall for a 4 in vessel at this pressure"), not "commonly used".
+- "unclear" is one short sentence naming what you'd need to know, or null.`;
+
+async function aiRoute(text){
+  const key=keyGet(); if(!key) return null;
+  const {calcs}=aiSchema();
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key":key,
+      "anthropic-version":"2023-06-01",
+      // Without this the browser request is refused outright.
+      "anthropic-dangerous-direct-browser-access":"true",
+    },
+    body:JSON.stringify({
+      model:AI_MODEL,
+      max_tokens:700,
+      system:AI_SYSTEM.replace("{{CALCS}}",calcs),
+      messages:[{role:"user",content:text}],
+      output_config:{format:{type:"json_schema",schema:{
+        type:"object",
+        properties:{
+          calculator:{type:"string",enum:Object.keys(CALCS)},
+          confidence:{type:"string",enum:["high","medium","low"]},
+          values:{type:"object",additionalProperties:{type:["string","number"]}},
+          predicted:{type:"array",items:{type:"string"}},
+          assumptions:{type:"array",items:{type:"object",
+            properties:{field:{type:"string"},why:{type:"string"}},
+            required:["field","why"],additionalProperties:false}},
+          unclear:{type:["string","null"]},
+        },
+        required:["calculator","confidence","values","predicted","assumptions","unclear"],
+        additionalProperties:false,
+      }}},
+    }),
+  });
+
+  if(!res.ok){
+    const e=new Error("api"); e.status=res.status;
+    if(res.status===401) e.msg="That API key was rejected. Check it in settings.";
+    else if(res.status===429) e.msg="Rate limited — try again in a moment.";
+    else if(res.status===400) e.msg="Anthropic rejected the request.";
+    else e.msg=`Anthropic returned ${res.status}.`;
+    throw e;
+  }
+  const data=await res.json();
+  const block=(data.content||[]).find(b=>b.type==="text");
+  if(!block) throw Object.assign(new Error("empty"),{msg:"No answer came back."});
+  let out; try{ out=JSON.parse(block.text); }
+  catch(_){ throw Object.assign(new Error("parse"),{msg:"Couldn't read the reply."}); }
+
+  // Discard anything that isn't a real field on the chosen calculator.
+  const c=CALCS[out.calculator]; if(!c) return null;
+  const ok=new Set(c.fields.map(f=>f.k));
+  const values={},pred=new Set((out.predicted||[]).filter(k=>ok.has(k)));
+  for(const [k,v] of Object.entries(out.values||{})){
+    if(!ok.has(k)) continue;
+    const f=c.fields.find(x=>x.k===k);
+    values[k]= f.t==="select" ? String(v) : (typeof v==="number"?v:parseFloat(v));
+    if(f.t!=="select"&&!isFinite(values[k])) delete values[k];
+  }
+  return {calc:out.calculator,confidence:out.confidence,values,
+    predicted:[...pred].filter(k=>k in values),
+    assumptions:(out.assumptions||[]).filter(a=>ok.has(a.field)&&a.field in values),
+    unclear:out.unclear||null, source:"ai"};
+}
+
+// Which fields on the current calculator are model guesses. Cleared on edit.
+let predictedNow={};
+
+let startText="", parsed=null, aiState=null, aiOpen=false;
 function renderStart(){
   $("#ctitle").textContent="Start here";
   $("#cdesc").textContent="Describe what you're sizing in plain language. Everything it picks up is shown before anything loads — correct it if it read you wrong.";
@@ -1568,19 +1730,69 @@ function renderStart(){
        <button class="btn primary" id="qgo">Work out what to use</button>
        ${startText?'<button class="btn" id="qclear">Clear</button>':""}
      </div>
+     <div class="ai-set">
+       <button class="ai-toggle" id="aitog" aria-expanded="${aiOpen}">
+         <span class="dot${keyGet()?" on":""}"></span>
+         AI assist ${keyGet()?"on":"off"} — ${aiOpen?"hide":"set up"}
+       </button>
+       ${aiOpen?`<div class="ai-body">
+         <p>Rules handle most descriptions on their own. With a key, anything they
+            can't place goes to Claude Haiku, which can also fill in values it
+            infers — always marked as predicted. Roughly $0.002 a call.</p>
+         <p>The key is stored in this browser only and is sent nowhere except
+            api.anthropic.com. Anything running on this page could read it, so use a
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">dedicated key</a>
+            with a spend limit — not one you use elsewhere.</p>
+         <div class="ai-row">
+           <input id="aikey" type="password" placeholder="sk-ant-…" value="${esc(keyGet())}"
+             autocomplete="off" spellcheck="false" aria-label="Anthropic API key">
+           <button class="btn sm" id="aisave">Save</button>
+           ${keyGet()?'<button class="btn sm danger" id="aidel">Remove</button>':""}
+         </div>
+       </div>`:""}
+     </div>
    </div>
+   ${aiState==="loading"?`<div class="group"><span class="thinking">Working out what you need…</span></div>`:""}
+   ${aiState&&aiState.err?`<div class="note warn">${esc(aiState.err)} Showing the rule-based match instead.</div>`:""}
    ${p?(p.calc?`
    <div class="group">
      <p class="grouptitle">What it read</p>
      <div class="ehead"><span class="ecalc">${CALCS[p.calc].title}</span>
-       <span class="chip ${p.confident?"ok":"warn"}">${p.confident?"clear match":"best guess"}</span></div>
-     ${p.read.length?`<div class="tablewrap"><table><thead><tr><th>Field</th><th>Value</th></tr></thead>
-       <tbody>${p.read.map(([k,val,u,why])=>{
+       <span class="chip ${p.source==="ai"?(p.confidence==="high"?"ok":"warn")
+         :(p.confident?"ok":"warn")}">${p.source==="ai"
+         ? (p.confidence==="high"?"clear match":p.confidence==="medium"?"likely":"best guess")
+         : (p.confident?"clear match":"best guess")}</span>
+       ${p.source==="ai"?'<span class="emeta">interpreted</span>':""}</div>
+     ${(()=>{
+       const rows=p.source==="ai"
+         ? Object.entries(p.values).map(([k,v])=>{
+             const f=CALCS[p.calc].fields.find(x=>x.k===k);
+             const isP=p.predicted.includes(k);
+             const shown=f.t==="select"?(f.o.find(o=>String(o[0])===String(v))||[,v])[1]:v;
+             return [k,shown,f&&f.u||"",isP?"predicted":"from your description",isP];
+           })
+         : p.read.map(([k,val,u,why])=>[k,val,u,why,false]);
+       if(!rows.length) return `<p class="dgcap" style="border:0;padding:0;margin:0">No values found — it will open with the defaults.</p>`;
+       return `<div class="tablewrap"><table><thead><tr><th>Field</th><th>Value</th></tr></thead>
+       <tbody>${rows.map(([k,val,u,why,isP])=>{
          const f=CALCS[p.calc].fields.find(x=>x.k===k);
-         return `<tr><td>${f?f.l:k}<span class="unit">${why}</span></td>
-           <td class="num">${typeof val==="number"?fmt(val):esc(val)}<span class="unit">${u}</span></td></tr>`;
-       }).join("")}</tbody></table></div>`
-      :`<p class="dgcap" style="border:0;padding:0;margin:0">No numbers found — it will open with the defaults.</p>`}
+         return `<tr><td>${f?f.l:k}${isP?'<span class="predchip">predicted</span>':
+             `<span class="unit">${esc(why)}</span>`}</td>
+           <td class="num${isP?" pred":""}" ${isP?'style="border-radius:5px;padding:2px 6px"':""}>${
+             typeof val==="number"?fmt(val):esc(val)}<span class="unit">${esc(u)}</span></td></tr>`;
+       }).join("")}</tbody></table></div>`;
+     })()}
+     ${p.source==="ai"&&p.assumptions.length?`<div class="assume">
+       <p class="grouptitle">Assumptions it made</p>
+       ${p.assumptions.map(a=>{
+         const f=CALCS[p.calc].fields.find(x=>x.k===a.field);
+         return `<div class="arow"><span class="af">${esc(f?f.l:a.field)}</span>
+           <span class="aw">${esc(a.why)}</span>
+           <button class="ax" data-drop="${esc(a.field)}" title="Clear this guess">clear</button></div>`;
+       }).join("")}
+       <p style="margin:8px 0 0;font-size:11.5px;color:var(--warn)">Check these before you trust the answer.</p>
+     </div>`:""}
+     ${p.source==="ai"&&p.unclear?`<div class="unclear"><b>Worth confirming:</b> ${esc(p.unclear)}</div>`:""}
      <div class="actions">
        <button class="btn primary" id="qopen">Open in ${CALCS[p.calc].label}</button>
        ${p.alts.map(a=>`<button class="btn sm" data-alt="${a}">${CALCS[a].label} instead</button>`).join("")}
@@ -1594,15 +1806,54 @@ function renderStart(){
        `<button class="btn sm" data-alt="${k}">${c.label}</button>`).join("")}</div>
    </div>`;
 
-  const go=()=>{ startText=$("#q").value; parsed=startText.trim()?parseQuery(startText):null; render(); };
+  const go=async()=>{
+    startText=$("#q").value;
+    if(!startText.trim()){ parsed=null; aiState=null; render(); return; }
+    // Rules first — free, instant, and right most of the time.
+    parsed=parseQuery(startText); aiState=null;
+    // Only pay for the model when the rules are genuinely thin. Low confidence
+    // alone isn't enough — a keyword tie ("bracket" vs "plate") still routes
+    // correctly when several values came out, and calling out there is wasted money.
+    const thin = !parsed.calc || parsed.read.length<2
+              || (!parsed.confident && parsed.read.length<3);
+    if(!(thin&&keyGet())){ render(); return; }
+    aiState="loading"; render();
+    try{
+      const ai=await aiRoute(startText);
+      if(ai){ parsed={...ai,alts:Object.keys(CALCS).filter(k=>k!==ai.calc).slice(0,3)}; aiState=null; }
+      else aiState=null;
+    }catch(err){
+      aiState={err: err&&err.msg ? err.msg : "Couldn't reach Anthropic."};
+    }
+    render();
+  };
   $("#qgo").onclick=go;
   $("#q").onkeydown=e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)) go(); };
-  if($("#qclear")) $("#qclear").onclick=()=>{startText="";parsed=null;render();};
+  if($("#qclear")) $("#qclear").onclick=()=>{startText="";parsed=null;aiState=null;render();};
+
+  $("#aitog").onclick=()=>{aiOpen=!aiOpen;render();};
+  if($("#aisave")) $("#aisave").onclick=()=>{
+    keySet($("#aikey").value.trim()); toast(keyGet()?"Key saved":"Key cleared"); render();
+  };
+  if($("#aidel")) $("#aidel").onclick=()=>{keySet("");toast("Key removed");render();};
   if($("#qopen")) $("#qopen").onclick=()=>{
     state[p.calc]={...defaults(p.calc),...p.values};
+    // Carry the guesses through — a predicted value must still look predicted
+    // once it's sitting in an input box.
+    predictedNow = p.source==="ai"
+      ? Object.fromEntries(p.predicted.map(k=>[k,(p.assumptions.find(a=>a.field===k)||{}).why||"predicted"]))
+      : {};
     current=p.calc; sweepKey=null; buildNav(); render();
   };
   $("#results").onclick=e=>{
+    const d=e.target.closest("[data-drop]");
+    if(d&&p){                       // drop one guess, keep the rest
+      const k=d.dataset.drop;
+      delete p.values[k];
+      p.predicted=p.predicted.filter(x=>x!==k);
+      p.assumptions=p.assumptions.filter(a=>a.field!==k);
+      render(); return;
+    }
     const a=e.target.closest("[data-alt]"); if(!a) return;
     const k=a.dataset.alt;
     if(p&&p.values) state[k]={...defaults(k),...Object.fromEntries(
@@ -1925,7 +2176,7 @@ function buildNav(){
      <li><button data-c="__project" ${current==="__project"?'aria-current="true"':""}>Project
        <span class="savedcount">${n}</span></button></li>`;
   $("#nav").onclick=e=>{const b=e.target.closest("button"); if(!b)return;
-   if(b.dataset.c!==current) sweepKey=null;  // a key from one calc means nothing in another
+   if(b.dataset.c!==current){ sweepKey=null; predictedNow={}; }  // keys from one calc mean nothing in another
    current=b.dataset.c; buildNav(); render();};
 }
 
@@ -1939,12 +2190,15 @@ function render(){
   $("#inputs").innerHTML=`<fieldset class="group"><p class="grouptitle">Inputs</p>${
    visible(current).map(f=>{
     const val=v[f.k];
-    if(f.t==="select") return `<div class="field wide"><label for="i-${f.k}">${f.l}${info(f.l)}</label>
-      <select id="i-${f.k}" data-k="${f.k}">${f.o.map(([ov,ol])=>
+    const isP=f.k in predictedNow, pc=isP?'<span class="predchip">predicted</span>':"";
+    if(f.t==="select") return `<div class="field wide"><label for="i-${f.k}">${f.l}${info(f.l)}${pc}</label>
+      <select id="i-${f.k}" data-k="${f.k}" class="${isP?"pred":""}"
+        ${isP?`title="${esc(predictedNow[f.k])}"`:""}>${f.o.map(([ov,ol])=>
         `<option value="${ov}"${String(ov)===String(val)?" selected":""}>${ol}</option>`).join("")}</select></div>`;
     const [dv,du]=conv(val,f.u);
-    return `<div class="field"><label for="i-${f.k}">${f.l}${info(f.l)}${f.u?` <span class="u">${du||f.u}</span>`:""}</label>
-      <input id="i-${f.k}" data-k="${f.k}" data-unit="${f.u||""}" type="number" step="any" value="${
+    return `<div class="field"><label for="i-${f.k}">${f.l}${info(f.l)}${pc}${f.u?` <span class="u">${du||f.u}</span>`:""}</label>
+      <input id="i-${f.k}" data-k="${f.k}" data-unit="${f.u||""}" type="number" step="any"
+        class="${isP?"pred":""}" ${isP?`title="${esc(predictedNow[f.k])}"`:""} value="${
         typeof dv==="number"?+dv.toFixed(6):dv}"></div>${sliderFor(f)}`;
    }).join("")}</fieldset>`;
 
@@ -2208,6 +2462,7 @@ document.addEventListener("input",e=>{
     return;
   }
   if(!el.dataset.k||!state[current]) return;
+  delete predictedNow[el.dataset.k];   // you typed it, so it's yours now
   const v=state[current];
   v[el.dataset.k]=el.type==="number"?parseFloat(el.value)||0:el.value;
   if(metric&&el.dataset.unit){

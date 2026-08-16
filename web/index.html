@@ -209,6 +209,50 @@ tr:last-child td{border-bottom:0}
 .btn.primary{background:var(--dye);border-color:var(--dye);color:#fff}
 .btn.primary:hover{opacity:.9;color:#fff}
 
+/* Project view */
+.pbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.pbar select{width:auto;min-width:190px}
+.pname{font-size:19px;font-weight:620;letter-spacing:-.01em}
+.entry{
+  background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:13px 15px;margin-bottom:10px;
+}
+.ehead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.ecalc{font-weight:600;font-size:14.5px}
+.emeta{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.espacer{flex:1}
+.esum{
+  display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;
+  color:var(--ink-2);margin-bottom:9px;
+}
+.esum b{color:var(--ink);font-weight:500}
+.enote{
+  width:100%;font-family:var(--ui);font-size:13px;line-height:1.5;
+  border:1px solid var(--rule);border-radius:7px;padding:7px 9px;resize:vertical;
+  background:var(--paper);color:var(--ink);min-height:38px;
+}
+.enote:focus{outline:2px solid var(--dye);outline-offset:-1px;border-color:var(--dye)}
+.enote::placeholder{color:var(--ink-3)}
+.eacts{display:flex;gap:6px;margin-top:8px}
+.btn.sm{font-size:11.5px;padding:4px 9px}
+.btn.danger:hover{border-color:var(--fail);color:var(--fail)}
+.empty{
+  border:1px dashed var(--rule-2);border-radius:10px;padding:26px 20px;
+  text-align:center;color:var(--ink-3);font-size:13.5px;line-height:1.6;
+}
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:var(--paper);font-size:13px;
+  padding:9px 16px;border-radius:8px;z-index:50;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);
+}
+nav .savedcount{
+  font-family:var(--mono);font-size:10px;background:var(--sunk);color:var(--ink-3);
+  border-radius:9px;padding:1px 6px;
+}
+nav button[aria-current="true"] .savedcount{background:rgba(255,255,255,.22);color:#fff}
+.navsep{height:1px;background:var(--rule);margin:10px 2px}
+
 footer{
   margin-top:34px;padding-top:14px;border-top:1px solid var(--rule);
   display:flex;gap:14px;align-items:center;flex-wrap:wrap;
@@ -855,6 +899,169 @@ function renderDiagram(){
    ${/defl/.test(d.svg)?'<p class="dglegend"><span><i></i>deflected / buckled shape</span></p>':""}`;
 }
 
+/* ---- Projects -------------------------------------------------------------
+   A project is a named set of saved calcs, each with a note. Held in
+   localStorage, which is per-browser — this does not follow you between your
+   phone and your laptop. Export writes the whole thing out as markdown.      */
+
+const KEY="napkin.v1";
+let DB={v:1,active:null,projects:{}};
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+function loadDB(){
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(raw){const p=JSON.parse(raw); if(p&&p.projects) DB=p;}
+  }catch(e){ /* private mode or corrupt — carry on with an empty in-memory DB */ }
+  if(!Object.keys(DB.projects).length) newProject("Untitled project",true);
+  if(!DB.projects[DB.active]) DB.active=Object.keys(DB.projects)[0];
+  saveDB();
+}
+function saveDB(){
+  try{ localStorage.setItem(KEY,JSON.stringify(DB)); }
+  catch(e){ toast("Couldn't save — browser storage is unavailable"); }
+}
+function newProject(name,quiet){
+  const id=uid();
+  DB.projects[id]={id,name:name||"Untitled project",created:Date.now(),entries:[]};
+  DB.active=id; if(!quiet) saveDB(); return id;
+}
+const proj=()=>DB.projects[DB.active];
+
+function saveEntry(){
+  const c=CALCS[current], v=state[current];
+  let r; try{ r=c.run(v); }catch(e){ toast("Fix the inputs first"); return; }
+  const summary=r.rows.filter(([,val])=>typeof val==="number").slice(0,3)
+    .map(([l,val,u])=>[l,val,u]);
+  proj().entries.unshift({
+    id:uid(),calc:current,inputs:{...v},note:"",
+    sf:r.sf==null?null:r.sf,summary,created:Date.now(),
+  });
+  saveDB(); buildNav();
+  toast(`Saved to ${proj().name}`);
+}
+function openEntry(id){
+  const e=proj().entries.find(x=>x.id===id); if(!e) return;
+  state[e.calc]={...defaults(e.calc),...e.inputs};
+  current=e.calc; buildNav(); render();
+}
+function deleteEntry(id){
+  proj().entries=proj().entries.filter(x=>x.id!==id);
+  saveDB(); buildNav(); render();
+}
+
+let toastT;
+function toast(msg){
+  document.querySelector(".toast")?.remove();
+  const el=document.createElement("div");
+  el.className="toast"; el.textContent=msg; el.setAttribute("role","status");
+  document.body.appendChild(el);
+  clearTimeout(toastT); toastT=setTimeout(()=>el.remove(),2200);
+}
+
+function projectMarkdown(){
+  const p=proj(), d=new Date(p.created);
+  const L=[`# ${p.name}`,"",`${p.entries.length} calc${p.entries.length===1?"":"s"} · started ${d.toLocaleDateString()}`,""];
+  if(!p.entries.length) L.push("_No calcs saved yet._");
+  for(const e of [...p.entries].reverse()){
+    const c=CALCS[e.calc]; let r;
+    try{ r=c.run({...defaults(e.calc),...e.inputs}); }catch(_){ continue; }
+    L.push("---","",`## ${c.title}`,"");
+    if(e.note) L.push(e.note,"");
+    L.push("| Input | Value | Unit |","| --- | --- | --- |");
+    const vv={...defaults(e.calc),...e.inputs};
+    for(const f of c.fields.filter(f=>!f.show||f.show(vv))){
+      const lbl=f.t==="select"?(f.o.find(o=>String(o[0])===String(vv[f.k]))||[,vv[f.k]])[1]:vv[f.k];
+      L.push(`| ${f.l} | ${lbl} | ${f.u||""} |`);
+    }
+    L.push("",`\`${r.formula}\``,"");
+    L.push("| Result | Value | Unit |","| --- | --- | --- |");
+    for(const [l,val,u] of r.rows) L.push(`| ${l} | ${fmt(val)} | ${u} |`);
+    if(r.sf!=null) L.push(`| **Safety factor** | **${r.sf.toFixed(2)}** | ${word(r.sf)} |`);
+    if(r.solved) for(const [l,val,u] of r.solved) L.push(`| ${l} | ${fmt(val)} | ${u} |`);
+    if(r.warn.length){ L.push(""); for(const [,t] of r.warn) L.push(`> **${t}**`); }
+    L.push("");
+  }
+  L.push("---","","_Preliminary sizing from Napkin — Shigley and Roark closed-form. Not fatigue, not code work._");
+  return L.join("\n");
+}
+
+function renderProject(){
+  const p=proj();
+  $("#ctitle").textContent="Project";
+  $("#cdesc").textContent="Saved calcs, each with a note. Everything here lives in this browser only.";
+  $("#inputs").innerHTML=""; $("#diagram").style.display="none";
+  $("#results").innerHTML=`
+   <div class="pbar">
+     <select id="psel" aria-label="Active project">${Object.values(DB.projects)
+       .map(x=>`<option value="${x.id}"${x.id===DB.active?" selected":""}>${esc(x.name)} (${x.entries.length})</option>`).join("")}</select>
+     <button class="btn sm" id="pnew">New project</button>
+     <button class="btn sm" id="prename">Rename</button>
+     <span class="espacer"></span>
+     <button class="btn sm" id="pcopy">Copy all as markdown</button>
+     <button class="btn sm" id="pdl">Save .md file</button>
+     <button class="btn sm danger" id="pdel">Delete project</button>
+   </div>
+   ${p.entries.length?p.entries.map(e=>{
+     const c=CALCS[e.calc];
+     return `<div class="entry" data-id="${e.id}">
+      <div class="ehead"><span class="ecalc">${c.title}</span>
+        ${e.sf!=null?`<span class="chip ${cls(e.sf)}">SF ${e.sf.toFixed(2)}</span>`:""}
+        <span class="espacer"></span>
+        <span class="emeta">${new Date(e.created).toLocaleDateString()}</span></div>
+      <div class="esum">${e.summary.map(([l,val,u])=>{
+        const [cv,cu]=conv(val,u); return `<span>${l} <b>${fmt(cv)}</b> ${cu||""}</span>`;}).join("")}</div>
+      <textarea class="enote" data-note="${e.id}" placeholder="What is this for? What did you decide?"
+        rows="1">${esc(e.note)}</textarea>
+      <div class="eacts">
+        <button class="btn sm" data-open="${e.id}">Open in ${c.label}</button>
+        <button class="btn sm danger" data-del="${e.id}">Delete</button>
+      </div></div>`;}).join(""):
+    `<div class="empty">Nothing saved yet.<br>Run a calc, then press <b>Save to project</b>.</div>`}`;
+
+  $("#psel").onchange=e=>{DB.active=e.target.value;saveDB();buildNav();render();};
+  $("#pnew").onclick=()=>{const n=prompt("Project name","Untitled project");
+    if(n!==null){newProject(n.trim()||"Untitled project");buildNav();render();}};
+  $("#prename").onclick=()=>{const n=prompt("Project name",p.name);
+    if(n!==null&&n.trim()){p.name=n.trim();saveDB();buildNav();render();}};
+  $("#pdel").onclick=()=>{
+    if(Object.keys(DB.projects).length<2){toast("That's your only project");return;}
+    if(!confirm(`Delete "${p.name}" and its ${p.entries.length} saved calc(s)? This cannot be undone.`))return;
+    delete DB.projects[DB.active]; DB.active=Object.keys(DB.projects)[0];
+    saveDB(); buildNav(); render();
+  };
+  $("#pcopy").onclick=()=>navigator.clipboard.writeText(projectMarkdown())
+    .then(()=>toast("Project copied — paste it into a Claude project"))
+    .catch(()=>toast("Copy failed"));
+  $("#pdl").onclick=downloadProject;
+
+  for(const t of document.querySelectorAll(".enote")){
+    autoGrow(t);
+    t.oninput=()=>{const e=p.entries.find(x=>x.id===t.dataset.note);
+      if(e){e.note=t.value;saveDB();} autoGrow(t);};
+  }
+  $("#results").onclick=ev=>{
+    const o=ev.target.closest("[data-open]"), d=ev.target.closest("[data-del]");
+    if(o) openEntry(o.dataset.open);
+    if(d&&confirm("Delete this calc?")) deleteEntry(d.dataset.del);
+  };
+}
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function autoGrow(t){t.style.height="auto";t.style.height=Math.max(38,t.scrollHeight)+"px";}
+
+async function downloadProject(){
+  const dl=await (window.claude?.use?.("downloads")??null);
+  if(!dl){ toast("File saving isn't available here — use Copy instead"); return; }
+  const name=proj().name.replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-")||"napkin-project";
+  try{ await dl.save({filename:`${name}.md`,data:projectMarkdown()}); toast("Saved"); }
+  catch(err){
+    const c=err&&err.code;
+    if(c==="declined") return;
+    if(c==="rate_limited") toast("A save prompt is already open");
+    else toast("Couldn't save the file — use Copy instead");
+  }
+}
+
 let current="beams", state={};
 const $=s=>document.querySelector(s);
 
@@ -866,15 +1073,21 @@ function visible(calc){
 }
 
 function buildNav(){
+  const n=proj()?proj().entries.length:0;
   $("#nav").innerHTML=Object.entries(CALCS).map(([k,c])=>
-   `<li><button data-c="${k}" ${k===current?'aria-current="true"':""}>${c.label}<span class="op">${c.op}</span></button></li>`).join("");
+   `<li><button data-c="${k}" ${k===current?'aria-current="true"':""}>${c.label}<span class="op">${c.op}</span></button></li>`).join("")
+   +`<li><div class="navsep"></div></li>
+     <li><button data-c="__project" ${current==="__project"?'aria-current="true"':""}>Project
+       <span class="savedcount">${n}</span></button></li>`;
   $("#nav").onclick=e=>{const b=e.target.closest("button"); if(!b)return;
    current=b.dataset.c; buildNav(); render();};
 }
 
 function render(){
+  if(current==="__project"){ renderProject(); return; }
   const c=CALCS[current], v=state[current];
   $("#ctitle").textContent=c.title; $("#cdesc").textContent=c.desc;
+  $("#results").onclick=null;
 
   $("#inputs").innerHTML=`<fieldset class="group"><p class="grouptitle">Inputs</p>${
    visible(current).map(f=>{
@@ -917,11 +1130,13 @@ function render(){
    ${r.solved?`<div class="group"><p class="grouptitle">Sized for SF ${v.sf}</p>
      <div class="tablewrap"><table><tbody>${r.solved.map(row).join("")}</tbody></table></div></div>`:""}
    <div class="actions">
-     <button class="btn primary" id="copy">Copy as markdown</button>
+     <button class="btn primary" id="save">Save to project</button>
+     <button class="btn" id="copy">Copy as markdown</button>
      <button class="btn" id="reset">Reset inputs</button>
    </div>`;
 
   renderDiagram();
+  $("#save").onclick=saveEntry;
   $("#copy").onclick=()=>copyMd(r);
   $("#reset").onclick=()=>{state[current]=defaults(current);render();};
 }
@@ -947,7 +1162,7 @@ function copyMd(r){
 }
 
 document.addEventListener("input",e=>{
-  const el=e.target; if(!el.dataset.k) return;
+  const el=e.target; if(!el.dataset.k||!state[current]) return;
   const v=state[current];
   v[el.dataset.k]=el.type==="number"?parseFloat(el.value)||0:el.value;
   if(metric&&el.dataset.unit){
@@ -1012,5 +1227,5 @@ function selfCheck(){
 }
 
 for(const k of Object.keys(CALCS)) state[k]=defaults(k);
-buildNav(); render(); selfCheck();
+loadDB(); buildNav(); render(); selfCheck();
 </script>

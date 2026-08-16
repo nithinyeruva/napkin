@@ -190,6 +190,33 @@ tr:last-child td{border-bottom:0}
   background:var(--sunk);border-radius:7px;padding:9px 11px;margin-top:12px;
   overflow-x:auto;white-space:nowrap;
 }
+
+/* Worked calculation — symbolic, substituted, result */
+.work{display:flex;flex-direction:column;gap:11px}
+.step{overflow-x:auto}
+.step-l{
+  font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin-bottom:3px;
+}
+.step-rows{
+  font-family:var(--mono);font-size:12.5px;line-height:1.75;
+  display:grid;grid-template-columns:auto 1fr;gap:0 8px;align-items:baseline;
+  width:max-content;min-width:100%;
+}
+.step-eq{color:var(--ink-3);text-align:right}
+.step-sym{color:var(--ink-2)}
+.step-sub{color:var(--ink-2)}
+.step-sub b{color:var(--dye);font-weight:500}
+.step-out{color:var(--ink);font-weight:600}
+.step-out .u{color:var(--ink-3);font-weight:400;margin-left:3px;font-size:11px}
+.worktoggle{
+  font:inherit;font-size:11px;font-family:var(--mono);cursor:pointer;
+  border:1px solid var(--rule-2);background:var(--card);color:var(--ink-3);
+  border-radius:5px;padding:2px 8px;margin-left:auto;
+}
+.worktoggle[aria-pressed="true"]{background:var(--dye);border-color:var(--dye);color:#fff}
+.grouphead{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.grouphead .grouptitle{margin:0}
 .note{
   display:flex;gap:9px;font-size:12.5px;line-height:1.45;
   border-radius:7px;padding:9px 11px;margin-top:8px;
@@ -512,6 +539,23 @@ function viscAt(t){
   return VISC[VISC.length-1][1];
 }
 
+/* ---- Worked steps ---------------------------------------------------------
+   Each step is [label, symbolic, substituted, value, unit]. The substituted
+   line is built from the same variables the result is, so it can never
+   disagree with the number underneath it — which is the whole point of showing
+   your work.                                                                 */
+// Numbers inside a substitution read differently from numbers in a results
+// table: an integer input should stay an integer, and a modulus is clearer
+// written out than as an exponent — nobody hand-writes 2.9e+7 psi.
+function N(x){
+  if(x==null||typeof x!=="number"||!isFinite(x)) return String(x??"—");
+  if(Number.isInteger(x)&&Math.abs(x)<1e9) return x.toLocaleString();
+  const a=Math.abs(x);
+  if(a>=1e4&&a<1e9) return Math.round(x).toLocaleString();
+  return fmt(x);
+}
+const st=(label,sym,sub,val,unit)=>[label,sym,sub,val,unit];
+
 const BEAM_CASES={
  ss_point:["Simply supported, centre point load","PL/4","PL³/48EI",(P,w,L)=>P*L/4,(P,w,L,E,I)=>P*L**3/(48*E*I)],
  ss_uniform:["Simply supported, uniform load","wL²/8","5wL⁴/384EI",(P,w,L)=>w*L*L/8,(P,w,L,E,I)=>5*w*L**4/(384*E*I)],
@@ -535,12 +579,37 @@ beams:{op:"01",label:"Beams",title:"Beam bending",
   {k:"sf",l:"Target safety factor",d:2},
  ],
  run(v){
-  const m=mat(v.material),s=sectionOf(v),C=BEAM_CASES[v.case];
+  const m=mat(v.material),s=sectionOf(v),C=BEAM_CASES[v.case],case_=v.case;
   const M=C[3](v.P,v.w,v.L), stress=M/s.S, defl=C[4](v.P,v.w,v.L,m.E,s.I);
   const sf=stress?m.Sy/stress:null, allow=v.L/v.limit;
   const warn=[];
   if(defl>allow) warn.push(["warn",`Deflection ${fmt(defl)} in exceeds L/${v.limit} = ${fmt(allow)} in — stiffen it`]);
+  const SUB={ss_point:`${N(v.P)} × ${N(v.L)} / 4`,ss_uniform:`${N(v.w)} × ${N(v.L)}² / 8`,
+    cant_point:`${N(v.P)} × ${N(v.L)}`,cant_uniform:`${N(v.w)} × ${N(v.L)}² / 2`,
+    fixed_point:`${N(v.P)} × ${N(v.L)} / 8`,fixed_uniform:`${N(v.w)} × ${N(v.L)}² / 12`};
+  const DSUB={ss_point:`${N(v.P)}·${N(v.L)}³ / (48 × ${N(m.E)} × ${N(s.I)})`,
+    ss_uniform:`5 × ${N(v.w)}·${N(v.L)}⁴ / (384 × ${N(m.E)} × ${N(s.I)})`,
+    cant_point:`${N(v.P)}·${N(v.L)}³ / (3 × ${N(m.E)} × ${N(s.I)})`,
+    cant_uniform:`${N(v.w)}·${N(v.L)}⁴ / (8 × ${N(m.E)} × ${N(s.I)})`,
+    fixed_point:`${N(v.P)}·${N(v.L)}³ / (192 × ${N(m.E)} × ${N(s.I)})`,
+    fixed_uniform:`${N(v.w)}·${N(v.L)}⁴ / (384 × ${N(m.E)} × ${N(s.I)})`};
+  const ISUB=v.shape==="rectangle"?`${N(v.b)} × ${N(v.h)}³ / 12`
+    :v.shape==="round"?`π × ${N(v.d)}⁴ / 64`
+    :v.shape==="tube"?`π(${N(v.od)}⁴ − ${N(v.id)}⁴) / 64`
+    :`${N(v.B)}·${N(v.H)}³/12 − (${N(v.B)}−${N(v.tw)})(${N(v.H)}−2×${N(v.tf)})³/12`;
+  const ISYM=v.shape==="rectangle"?"I = b·h³/12":v.shape==="round"?"I = πd⁴/64"
+    :v.shape==="tube"?"I = π(OD⁴ − ID⁴)/64":"I = BH³/12 − (B−tw)(H−2tf)³/12";
+  const cDist=v.shape==="rectangle"?v.h/2:v.shape==="round"?v.d/2:v.shape==="tube"?v.od/2:v.H/2;
+
   return {sf,
+   steps:[
+    st("Moment of inertia",ISYM,ISUB,s.I,"in⁴"),
+    st("Section modulus","S = I/c",`${N(s.I)} / ${N(cDist)}`,s.S,"in³"),
+    st("Max bending moment",`M = ${C[1]}`,SUB[case_],M,"in-lbf"),
+    st("Bending stress","σ = M/S",`${N(M)} / ${N(s.S)}`,stress,"psi"),
+    st("Max deflection",`δ = ${C[2]}`,DSUB[case_],defl,"in"),
+    st("Safety factor","SF = Sy/σ",`${N(m.Sy)} / ${N(stress)}`,sf,""),
+   ],
    rows:[["Max moment M",M,"in-lbf"],["Bending stress",stress,"psi"],
     ["Max deflection",defl,"in"],[`Allowable L/${v.limit}`,allow,"in"],
     ["Section modulus S",s.S,"in³"],["Moment of inertia I",s.I,"in⁴"],
@@ -589,7 +658,27 @@ plates:{op:"02",label:"Plates",title:"Flat plate under pressure",
   }
   const sf=stress?m.Sy/stress:null, warn=[];
   if(defl>v.t/2) warn.push(["warn",`Deflection ${fmt(defl)} in exceeds t/2 — small-deflection theory is stretched, consider membrane behaviour or FEA`]);
-  return {sf,rows:[...extra,["Max stress",stress,"psi"],["Max deflection",defl,"in"]],
+  const steps=[];
+  if(v.kind==="circular"){
+   const D=m.E*v.t**3/(12*(1-m.nu**2));
+   steps.push(st("Plate rigidity","D = Et³/12(1−v²)",
+     `${N(m.E)} × ${N(v.t)}³ / (12(1 − ${N(m.nu)}²))`,D,"lbf-in"));
+   steps.push(v.edge==="ss"
+     ? st("Max stress","σ = 3(3+v)qa²/8t²",`3(3+${N(m.nu)}) × ${N(v.q)} × ${N(v.a)}² / (8 × ${N(v.t)}²)`,stress,"psi")
+     : st("Max stress","σ = 3qa²/4t²",`3 × ${N(v.q)} × ${N(v.a)}² / (4 × ${N(v.t)}²)`,stress,"psi"));
+   steps.push(st("Max deflection",v.edge==="ss"?"δ = ((5+v)/(1+v))qa⁴/64D":"δ = qa⁴/64D",
+     `${N(v.q)} × ${N(v.a)}⁴ / (64 × ${N(D)})`,defl,"in"));
+  } else {
+   let a=v.la,b=v.sb; if(b>a){[a,b]=[b,a];}
+   const [beta,alpha]=stepLookup(v.edge==="ss"?RECT_SS:RECT_CL,a/b);
+   steps.push(st("Aspect ratio","a/b",`${N(a)} / ${N(b)}`,a/b,""));
+   steps.push(st("Max stress","σ = βqb²/t²",`${N(beta)} × ${N(v.q)} × ${N(b)}² / ${N(v.t)}²`,stress,"psi"));
+   steps.push(st("Max deflection","δ = αqb⁴/Et³",`${N(alpha)} × ${N(v.q)} × ${N(b)}⁴ / (${N(m.E)} × ${N(v.t)}³)`,defl,"in"));
+  }
+  steps.push(st("Safety factor","SF = Sy/σ",`${N(m.Sy)} / ${N(stress)}`,sf,""));
+  steps.push(st(`Required thickness for SF ${v.sf}`,"t = a·√(3q·SF/4Sy)",
+    `back-solved from the stress equation`,reqt,"in"));
+  return {sf,steps,rows:[...extra,["Max stress",stress,"psi"],["Max deflection",defl,"in"]],
    solved:[["Required thickness t",reqt,"in"]],formula,warn};
  }},
 
@@ -615,6 +704,17 @@ columns:{op:"03",label:"Columns",title:"Column buckling",
   if(v.aisc==="theory"&&(v.end==="fx"||v.end==="fp"))
    warn.push(["warn","Theoretical K assumes ideal end fixity; real joints are softer — try the AISC design value"]);
   return {sf,sfTarget:3,
+   steps:[
+    st("Radius of gyration","r = √(I/A)",`√(${N(s.I)} / ${N(s.A)})`,s.r,"in"),
+    st("Slenderness","KL/r",`${N(K)} × ${N(v.L)} / ${N(s.r)}`,sl,""),
+    st("Transition slenderness","Cc = √(2π²E/Sy)",`√(2π² × ${N(m.E)} / ${N(m.Sy)})`,Cc,""),
+    st(`Critical stress — ${euler?"Euler":"Johnson"} governs`,
+      euler?"σcr = π²E/(KL/r)²":"σcr = Sy(1 − Sy(KL/r)²/4π²E)",
+      euler?`π² × ${N(m.E)} / ${N(sl)}²`
+           :`${N(m.Sy)}(1 − ${N(m.Sy)} × ${N(sl)}² / (4π² × ${N(m.E)}))`,scr,"psi"),
+    st("Critical load","Pcr = σcr·A",`${N(scr)} × ${N(s.A)}`,Pcr,"lbf"),
+    st("Safety factor","SF = Pcr/P",`${N(Pcr)} / ${N(v.P)}`,sf,""),
+   ],
    rows:[["K",K,""],["Slenderness KL/r",sl,""],["Transition Cc",Cc,""],
     ["Regime",euler?"Euler (long)":"Johnson (intermediate)",""],
     ["Critical stress",scr,"psi"],["Critical load Pcr",Pcr,"lbf"]],
@@ -644,6 +744,16 @@ shafts:{op:"04",label:"Shafts",title:"Shaft — bending and torsion",
   if(v.L&&twist){const perFt=twist/(v.L/12);
    if(perFt>.08) warn.unshift(["warn",`Twist ${perFt.toFixed(3)} deg/ft exceeds the 0.08 deg/ft rule of thumb for power shafts`]);}
   return {sf,
+   steps:[
+    ...(v.T>0?[]:[st("Torque from power","T = 63025·HP/RPM",
+      `63025 × ${N(v.hp)} / ${N(v.rpm)}`,T,"in-lbf")]),
+    st("Torsional shear","τ = 16T/πd³",`16 × ${N(T)} / (π × ${N(v.d)}³)`,tau,"psi"),
+    st("Bending stress","σb = 32M/πd³",`32 × ${N(v.M)} / (π × ${N(v.d)}³)`,sb,"psi"),
+    st("Combined, von Mises","σ' = √(σb² + 3τ²)",`√(${N(sb)}² + 3 × ${N(tau)}²)`,vm,"psi"),
+    st("Safety factor","SF = Sy/σ'",`${N(m.Sy)} / ${N(vm)}`,sf,""),
+    ...(v.L&&T?[st("Twist over length","θ = TL/GJ",
+      `${N(T)} × ${N(v.L)} / (${N(m.G)} × ${N(J)}) × 180/π`,twist,"deg")]:[]),
+   ],
    rows:[["Torque T",T,"in-lbf"],["Torsional shear",tau,"psi"],["Bending stress",sb,"psi"],
     ["von Mises",vm,"psi"],["Polar inertia J",J,"in⁴"],["Twist over L",twist,"deg"]],
    solved:[["Required diameter d",Math.cbrt(32*v.sf*Math.sqrt(v.M**2+.75*T*T)/(Math.PI*m.Sy)),"in"]],
@@ -670,13 +780,22 @@ bolts:{op:"05",label:"Bolts",title:"Bolted joint",
   const sep=v.P?Fi/((1-v.C)*v.P):null;
   const warn=[["warn","Torque-controlled preload scatters ±25% — verify a critical joint by turn-of-nut or direct measurement"]];
   if(sep!==null&&sep<1) warn.unshift(["fail",`Joint separates at ${sep.toFixed(2)}× the applied load`]);
+  const steps=[
+   st("Proof load","Fp = proof × At",`${N(proof)} × ${N(At)}`,Fp,"lbf"),
+   st("Preload","Fi = fraction × Fp",`${N(v.frac)} × ${N(Fp)}`,Fi,"lbf"),
+   st("Tightening torque","T = K·Fi·d",`${N(K)} × ${N(Fi)} × ${N(d)}`,Tq,"in-lbf"),
+   st("Bolt force","Fb = Fi + C·P",`${N(Fi)} + ${N(v.C)} × ${N(v.P)}`,Fb,"lbf"),
+   st("Safety factor vs proof","SF = Fp/Fb",`${N(Fp)} / ${N(Fb)}`,sf,""),
+   ...(v.P?[st("Separation factor","Fi / ((1−C)·P)",
+     `${N(Fi)} / ((1 − ${N(v.C)}) × ${N(v.P)})`,sep,"× P")]:[]),
+  ];
   const rows=[["Nominal dia d",d,"in"],["Tensile stress area At",At,"in²"],
    ["Proof load Fp",Fp,"lbf"],["Preload Fi",Fi,"lbf"],
    ["Tightening torque",Tq,"in-lbf"],["Tightening torque",Tq/12,"ft-lbf"],
    ["Bolt force Fb",Fb,"lbf"],["Load factor to yield",lf,"× P"],
    ["Separation factor",sep,"× P"]];
   if(v.V) rows.push(["SF in shear",.577*Sy/(v.V/At),""]);
-  return {sf,rows,formula:"Fp = proof·At,  Fi = frac·Fp,  T = K·Fi·d,  Fb = Fi + C·P",warn};
+  return {sf,steps,rows,formula:"Fp = proof·At,  Fi = frac·Fp,  T = K·Fi·d,  Fb = Fi + C·P",warn};
  }},
 
 pressure:{op:"06",label:"Pressure",title:"Thin-wall pressure vessel",
@@ -695,6 +814,15 @@ pressure:{op:"06",label:"Pressure",title:"Thin-wall pressure vessel",
   const warn=[];
   if(v.t>r/10) warn.push(["warn",`t = ${fmt(v.t)} in exceeds r/10 = ${fmt(r/10)} in — thin-wall theory no longer applies, use Lamé`]);
   return {sf,
+   steps:[
+    st("Radius","r = ID/2",`${N(v.ID)} / 2`,r,"in"),
+    st("Hoop stress","σ = Pr/t",`${N(v.P)} × ${N(r)} / ${N(v.t)}`,hoop,"psi"),
+    st("Longitudinal stress","σ = Pr/2t",`${N(v.P)} × ${N(r)} / (2 × ${N(v.t)})`,lon,"psi"),
+    st("Safety factor","SF = Sy/σ_hoop",`${N(m.Sy)} / ${N(hoop)}`,sf,""),
+    st(`Required wall for SF ${v.sf}`,"t = SF·P·r/Sy",
+      `${N(v.sf)} × ${N(v.P)} × ${N(r)} / ${N(m.Sy)}`,v.sf*v.P*r/m.Sy,"in"),
+    st("End-cap force","F = P·πr²",`${N(v.P)} × π × ${N(r)}²`,F,"lbf"),
+   ],
    rows:[["Radius r",r,"in"],["Hoop stress",hoop,"psi"],["Longitudinal stress",lon,"psi"],
     ["Sphere / dished end stress",lon,"psi"],["End-cap force",F,"lbf"],
     ["Tensile load per bolt",v.n?F/v.n:null,"lbf"]],
@@ -731,6 +859,18 @@ cooling:{op:"07",label:"Cooling",title:"Cooling lines and heat",
   if(V>10) warn.push(["warn",`Velocity ${V.toFixed(2)} ft/s risks erosion`]);
   if(margin<0) warn.push(["fail","Short on head — bigger pump, larger channel, or split the circuit"]);
   return {sf:null,
+   steps:[
+    st("Required flow","GPM = Q/(500·dT)",`${N(v.Q)} / (500 × ${N(v.dT)})`,need,"GPM"),
+    st("Velocity","V = 0.4085·GPM/d²",`0.4085 × ${N(v.gpm)} / ${N(v.d)}²`,V,"ft/s"),
+    st("Reynolds number","Re = 3160·GPM/(d·v)",
+      `3160 × ${N(v.gpm)} / (${N(v.d)} × ${N(nu)})`,Re,""),
+    st("Friction factor","f = 0.25/[log₁₀(e/3.7d + 5.74/Re⁰·⁹)]²",
+      `Swamee-Jain, e = ${N(v.rough)} in`,f,""),
+    st("Friction head","hf = f(L/d)V²/2g",
+      `${N(f)} × (${N(12*v.len)} / ${N(v.d)}) × ${N(V)}² / (2 × 32.174)`,hf,"ft"),
+    st("Minor losses","hm = K·V²/2g",`${N(v.K)} × ${N(V)}² / (2 × 32.174)`,hm,"ft"),
+    st("Pressure drop","Δp = 0.4331(hf + hm)",`0.4331 × (${N(hf)} + ${N(hm)})`,dp,"psi"),
+   ],
    rows:[["Required total flow",need,"GPM"],["Viscosity",nu,"cSt"],["Velocity",V,"ft/s"],
     ["Reynolds",Re,""],["Regime",regime,""],["Friction factor f",f,""],
     ["Friction head",hf,"ft"],["Minor-loss head",hm,"ft"],
@@ -743,7 +883,22 @@ sections:{op:"08",label:"Sections",title:"Section properties",
  fields:[...SHAPE_FIELDS.map(f=>f.k==="h"?{...f,d:2}:f)],
  run(v){
   const s=sectionOf(v);
-  return {sf:null,rows:[["Area A",s.A,"in²"],["Moment of inertia I",s.I,"in⁴"],
+  const SY={rectangle:["A = b·h","I = b·h³/12","S = b·h²/6","r = h/√12"],
+    round:["A = πd²/4","I = πd⁴/64","S = πd³/32","r = d/4"],
+    tube:["A = π(OD²−ID²)/4","I = π(OD⁴−ID⁴)/64","S = I/(OD/2)","r = √(I/A)"],
+    ibeam:["A = 2B·tf + (H−2tf)tw","I = BH³/12 − (B−tw)(H−2tf)³/12","S = I/(H/2)","r = √(I/A)"]}[v.shape];
+  const SB={rectangle:[`${N(v.b)} × ${N(v.h)}`,`${N(v.b)} × ${N(v.h)}³ / 12`,
+      `${N(v.b)} × ${N(v.h)}² / 6`,`${N(v.h)} / √12`],
+    round:[`π × ${N(v.d)}² / 4`,`π × ${N(v.d)}⁴ / 64`,`π × ${N(v.d)}³ / 32`,`${N(v.d)} / 4`],
+    tube:[`π(${N(v.od)}² − ${N(v.id)}²) / 4`,`π(${N(v.od)}⁴ − ${N(v.id)}⁴) / 64`,
+      `${N(s.I)} / (${N(v.od)} / 2)`,`√(${N(s.I)} / ${N(s.A)})`],
+    ibeam:[`2 × ${N(v.B)} × ${N(v.tf)} + (${N(v.H)} − 2 × ${N(v.tf)}) × ${N(v.tw)}`,
+      `${N(v.B)}·${N(v.H)}³/12 − (${N(v.B)}−${N(v.tw)})(${N(v.H)}−2×${N(v.tf)})³/12`,
+      `${N(s.I)} / (${N(v.H)} / 2)`,`√(${N(s.I)} / ${N(s.A)})`]}[v.shape];
+  return {sf:null,
+   steps:[st("Area",SY[0],SB[0],s.A,"in²"),st("Moment of inertia",SY[1],SB[1],s.I,"in⁴"),
+     st("Section modulus",SY[2],SB[2],s.S,"in³"),st("Radius of gyration",SY[3],SB[3],s.r,"in")],
+   rows:[["Area A",s.A,"in²"],["Moment of inertia I",s.I,"in⁴"],
    ["Section modulus S",s.S,"in³"],["Radius of gyration r",s.r,"in"]],
    formula:"I about the horizontal axis; S = I/c; r = √(I/A)",warn:[]};
  }},
@@ -1750,6 +1905,7 @@ async function downloadProject(){
 }
 
 let current="__start", state={};
+let showWork=(()=>{try{return localStorage.getItem("napkin.showWork")!=="0";}catch(_){return true;}})();
 const $=s=>document.querySelector(s);
 
 function defaults(calc){
@@ -1818,6 +1974,19 @@ function render(){
      <div class="formula">${r.formula}</div>
      ${r.warn.map(([k,t])=>`<div class="note ${k}">${t}</div>`).join("")}
    </div>
+   ${r.steps&&r.steps.length?`<div class="group">
+     <div class="grouphead"><p class="grouptitle">Worked calculation</p>
+       <button class="worktoggle" id="wtog" aria-pressed="${showWork}">${showWork?"hide":"show"}</button></div>
+     ${showWork?`<div class="work">${r.steps.map(([l,sym,sub,val,u])=>`
+       <div class="step"><div class="step-l">${termHtml(l,l)}</div>
+         <div class="step-rows">
+           <span class="step-eq"></span><span class="step-sym">${esc(sym)}</span>
+           <span class="step-eq">=</span><span class="step-sub">${esc(sub)}</span>
+           <span class="step-eq">=</span><span class="step-out">${
+             val==null?"—":fmt(conv(val,u)[0])}<span class="u">${conv(val,u)[1]||""}</span></span>
+         </div></div>`).join("")}</div>`
+      :`<p class="dgcap" style="border:0;padding:0;margin:0">Every equation with your numbers substituted in.</p>`}
+   </div>`:""}
    ${(()=>{const F=findings(current,v,r); return F.length?`<div class="group">
      <p class="grouptitle">What stands out</p>
      ${F.map(([k,t])=>`<div class="finding ${k}"><span class="mk">${
@@ -1832,6 +2001,11 @@ function render(){
    </div>`;
 
   renderDiagram();
+  if($("#wtog")) $("#wtog").onclick=()=>{
+    showWork=!showWork;
+    try{localStorage.setItem("napkin.showWork",showWork?"1":"0");}catch(_){}
+    render();
+  };
   $("#save").onclick=saveEntry;
   $("#preview").onclick=openPreview;
   $("#reset").onclick=()=>{state[current]=defaults(current);render();};
@@ -1871,6 +2045,13 @@ function exportMd(level,calcKey,inputs){
   L.push("**Inputs**","","| Input | Value | Unit |","| --- | --- | --- |");
   for(const f of fields) L.push(`| ${f.l} | ${lbl(f)} | ${f.u||""} |`);
   L.push("",`\`${r.formula}\``,"");
+  if(level!=="standard"&&r.steps&&r.steps.length){
+    L.push("**Worked**","","```");
+    for(const [l,sym,sub,val,u] of r.steps){
+      L.push(`${l}`,`  ${sym}`,`  = ${sub}`,`  = ${fmt(val)} ${u}`.trimEnd(),"");
+    }
+    L.push("```","");
+  }
   L.push("**Results**","","| Result | Value | Unit |","| --- | --- | --- |");
   const rows=level==="standard"?r.rows.slice(0,5):r.rows;
   for(const [l,x,u] of rows) L.push(`| ${l} | ${fmt(x)} | ${u} |`);

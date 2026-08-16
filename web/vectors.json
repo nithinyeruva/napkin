@@ -1,0 +1,78 @@
+[
+ {
+  "name": "beam.ss_point.M",
+  "want": 2500.0
+ },
+ {
+  "name": "beam.ss_point.stress",
+  "want": 15000.0
+ },
+ {
+  "name": "beam.ss_point.defl",
+  "want": 0.034482758620689655
+ },
+ {
+  "name": "beam.ss_point.sf",
+  "want": 2.4
+ },
+ {
+  "name": "plate.circ.stress",
+  "want": 2400.0
+ },
+ {
+  "name": "plate.circ.req_t",
+  "want": 0.14696938456699066
+ },
+ {
+  "name": "plate.rect.stress",
+  "want": 3905.2799999999997
+ },
+ {
+  "name": "plate.rect.req_t",
+  "want": 0.23289482604815417
+ },
+ {
+  "name": "col.slender",
+  "want": 160.0
+ },
+ {
+  "name": "col.Pcr",
+  "want": 4939.354378392488
+ },
+ {
+  "name": "shaft.vm",
+  "want": 6123.319701659756
+ },
+ {
+  "name": "shaft.twist",
+  "want": 0.34623183474730457
+ },
+ {
+  "name": "bolt.torque",
+  "want": 370.546875
+ },
+ {
+  "name": "bolt.sep",
+  "want": 6.5875
+ },
+ {
+  "name": "press.hoop",
+  "want": 2500.0
+ },
+ {
+  "name": "press.req_t",
+  "want": 0.025
+ },
+ {
+  "name": "cool.Re",
+  "want": 21243.697478991595
+ },
+ {
+  "name": "cool.dp",
+  "want": 1.8604674823848477
+ },
+ {
+  "name": "sec.ibeam.I",
+  "want": 8.133138020833332
+ }
+]

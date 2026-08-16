@@ -1,0 +1,728 @@
+<title>Napkin</title>
+<style>
+:root{
+  --paper:#FAFAFB; --card:#FFFFFF; --sunk:#F2F3F6;
+  --ink:#141821; --ink-2:#4A5260; --ink-3:#7C8492;
+  --rule:#E0E3E9; --rule-2:#CBD0DA;
+  --dye:#1F4E8C; --dye-soft:#E8EEF7;
+  --ok:#2E7D4F; --ok-bg:#E8F3EC;
+  --warn:#B0761A; --warn-bg:#FAF1DF;
+  --fail:#B03A32; --fail-bg:#FBEAE8;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1319; --card:#161B23; --sunk:#1D232C;
+    --ink:#E6E9EF; --ink-2:#9DA6B4; --ink-3:#6D7686;
+    --rule:#262D38; --rule-2:#333C4A;
+    --dye:#6EA3E0; --dye-soft:#1A2634;
+    --ok:#5FBF87; --ok-bg:#152318;
+    --warn:#D9A441; --warn-bg:#241D10;
+    --fail:#E0736A; --fail-bg:#2A1614;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1319; --card:#161B23; --sunk:#1D232C;
+  --ink:#E6E9EF; --ink-2:#9DA6B4; --ink-3:#6D7686;
+  --rule:#262D38; --rule-2:#333C4A;
+  --dye:#6EA3E0; --dye-soft:#1A2634;
+  --ok:#5FBF87; --ok-bg:#152318;
+  --warn:#D9A441; --warn-bg:#241D10;
+  --fail:#E0736A; --fail-bg:#2A1614;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--ui); font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 64px}
+
+header{
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding:26px 0 18px;border-bottom:2px solid var(--ink);margin-bottom:0;
+}
+h1{font-size:26px;letter-spacing:-.02em;margin:0;font-weight:640}
+.tag{font-size:12px;color:var(--ink-2);letter-spacing:.02em}
+.spacer{flex:1}
+.toggle{display:flex;border:1px solid var(--rule-2);border-radius:7px;overflow:hidden}
+.toggle button{
+  font:inherit;font-size:12px;padding:5px 11px;border:0;cursor:pointer;
+  background:var(--card);color:var(--ink-2);
+}
+.toggle button[aria-pressed="true"]{background:var(--dye);color:#fff}
+.toggle button:focus-visible{outline:2px solid var(--dye);outline-offset:-2px}
+
+.layout{display:grid;grid-template-columns:186px 1fr;gap:0;align-items:start}
+nav{
+  border-right:1px solid var(--rule);padding:16px 14px 16px 0;
+  position:sticky;top:0;
+}
+.navlabel{
+  font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 8px 2px;font-weight:600;
+}
+nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+nav button{
+  width:100%;text-align:left;font:inherit;font-size:14px;
+  padding:6px 10px;border:0;border-radius:6px;cursor:pointer;
+  background:transparent;color:var(--ink-2);
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+}
+nav button:hover{background:var(--sunk);color:var(--ink)}
+nav button[aria-current="true"]{background:var(--dye);color:#fff;font-weight:560}
+nav button:focus-visible{outline:2px solid var(--dye);outline-offset:1px}
+nav .op{font-family:var(--mono);font-size:10px;opacity:.55}
+
+main{padding:22px 0 0 28px;min-width:0}
+.calchead{margin-bottom:18px}
+.calchead h2{font-size:19px;margin:0 0 3px;letter-spacing:-.01em;font-weight:620}
+.calchead p{margin:0;font-size:13px;color:var(--ink-2);max-width:62ch}
+
+.cols{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:26px;align-items:start}
+
+fieldset{border:0;margin:0;padding:0}
+.group{
+  background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:14px 15px;
+}
+.group + .group{margin-top:12px}
+.grouptitle{
+  font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;margin:0 0 10px;
+}
+.field{display:grid;grid-template-columns:1fr 108px;gap:8px;align-items:center;margin-bottom:9px}
+.field:last-child{margin-bottom:0}
+.field label{font-size:13px;color:var(--ink-2);line-height:1.3}
+.field .u{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+input,select{
+  font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;
+  width:100%;padding:5px 8px;border:1px solid var(--rule-2);border-radius:6px;
+  background:var(--paper);color:var(--ink);
+}
+select{font-family:var(--ui);font-size:12.5px}
+input:focus,select:focus{outline:2px solid var(--dye);outline-offset:-1px;border-color:var(--dye)}
+.wide{grid-template-columns:1fr}
+.wide label{margin-bottom:2px}
+
+.verdict{
+  background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;margin-bottom:12px;
+}
+.vtop{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.sfblock{min-width:120px}
+.sflabel{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.sfval{
+  font-family:var(--mono);font-size:38px;line-height:1.05;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;margin-top:2px;
+}
+.chip{
+  display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+  padding:3px 9px;border-radius:5px;font-weight:600;margin-top:6px;
+}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.fail{background:var(--fail-bg);color:var(--fail)}
+.chip.none{background:var(--sunk);color:var(--ink-3)}
+
+.gauge{flex:1;min-width:200px;padding-top:8px}
+.gtrack{position:relative;height:8px;border-radius:4px;background:var(--sunk);overflow:hidden}
+.gfill{position:absolute;inset:0 auto 0 0;border-radius:4px;transition:width .18s ease}
+.gmark{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--rule-2)}
+.gscale{
+  display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:10px;color:var(--ink-3);margin-top:5px;
+}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+.tablewrap{overflow-x:auto}
+th{
+  text-align:left;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 0 7px;border-bottom:1px solid var(--rule);
+}
+th:last-child,td:last-child{text-align:right}
+td{padding:6px 0;border-bottom:1px solid var(--rule);color:var(--ink-2)}
+td:first-child{color:var(--ink)}
+tr:last-child td{border-bottom:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.unit{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:5px}
+
+.formula{
+  font-family:var(--mono);font-size:12px;color:var(--ink-2);
+  background:var(--sunk);border-radius:7px;padding:9px 11px;margin-top:12px;
+  overflow-x:auto;white-space:nowrap;
+}
+.note{
+  display:flex;gap:9px;font-size:12.5px;line-height:1.45;
+  border-radius:7px;padding:9px 11px;margin-top:8px;
+}
+.note.warn{background:var(--warn-bg);color:var(--warn)}
+.note.fail{background:var(--fail-bg);color:var(--fail)}
+.note b{font-weight:600}
+.note::before{content:"!";font-family:var(--mono);font-weight:700;flex:none}
+
+.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.btn{
+  font:inherit;font-size:12.5px;padding:6px 13px;border-radius:7px;cursor:pointer;
+  border:1px solid var(--rule-2);background:var(--card);color:var(--ink);
+}
+.btn:hover{border-color:var(--dye);color:var(--dye)}
+.btn:focus-visible{outline:2px solid var(--dye);outline-offset:1px}
+.btn.primary{background:var(--dye);border-color:var(--dye);color:#fff}
+.btn.primary:hover{opacity:.9;color:#fff}
+
+footer{
+  margin-top:34px;padding-top:14px;border-top:1px solid var(--rule);
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  font-size:12px;color:var(--ink-3);
+}
+.selfcheck{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:5px}
+
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr}
+  nav{
+    border-right:0;border-bottom:1px solid var(--rule);position:static;
+    padding:12px 0;
+  }
+  nav ul{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:2px}
+  nav button{width:auto;white-space:nowrap;font-size:13px}
+  nav .op{display:none}
+  .navlabel{display:none}
+  main{padding:18px 0 0}
+  .cols{grid-template-columns:1fr;gap:16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Napkin</h1>
+  <span class="tag">Hand calcs — Shigley &amp; Roark closed-form</span>
+  <span class="spacer"></span>
+  <div class="toggle" role="group" aria-label="Units">
+    <button id="us" aria-pressed="true">US</button>
+    <button id="si" aria-pressed="false">Metric</button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav>
+    <p class="navlabel">Calculators</p>
+    <ul id="nav"></ul>
+  </nav>
+  <main>
+    <div class="calchead">
+      <h2 id="ctitle"></h2>
+      <p id="cdesc"></p>
+    </div>
+    <div class="cols">
+      <form id="inputs" autocomplete="off"></form>
+      <section id="results" aria-live="polite"></section>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <span id="check" class="selfcheck"></span>
+  <span>US customary internally. Preliminary sizing only — not fatigue, not code work.</span>
+</footer>
+</div>
+
+<script>
+"use strict";
+
+const MAT = {
+ "Steel A36 (HR)":        [29e6,36000,58000,.29,.284,27],
+ "Steel 1018 (CR)":       [29e6,54000,64000,.29,.284,30],
+ "Steel 4140 (Q&T 28HRC)":[29.7e6,95000,110000,.29,.284,24.5],
+ "Tool steel P20 (30HRC)":[29.7e6,125000,140000,.29,.284,17],
+ "Tool steel H13 (45HRC)":[30e6,185000,215000,.30,.280,14],
+ "SS 304 (annealed)":     [28e6,30000,75000,.29,.289,9.4],
+ "SS 17-4 PH (H900)":     [28.5e6,170000,190000,.29,.282,10.4],
+ "Al 6061-T6":            [10e6,40000,45000,.33,.098,96],
+ "Al 7075-T6":            [10.4e6,73000,83000,.33,.102,75],
+ "Brass C360 (1/2 hard)": [14e6,45000,58000,.31,.307,67],
+ "Copper C110":           [17e6,10000,32000,.34,.323,226],
+ "Ti-6Al-4V":             [16.5e6,128000,138000,.34,.160,3.9],
+ "ABS (molded)":          [320000,6000,6500,.35,.037,.10],
+ "Polycarbonate":         [340000,9000,9500,.37,.043,.11],
+ "Nylon 6/6 (dry)":       [400000,11000,12000,.39,.041,.14],
+ "Acetal (Delrin)":       [450000,10000,10000,.35,.051,.21],
+ "PEEK":                  [500000,14000,14500,.38,.047,.14],
+};
+const mat = n => { const m=MAT[n]; return {E:m[0],Sy:m[1],Su:m[2],nu:m[3],rho:m[4],k:m[5],
+  get G(){return m[0]/(2*(1+m[3]))}}; };
+const MATNAMES = Object.keys(MAT);
+
+const THREADS={"#4-40":[.112,.00604],"#6-32":[.138,.00909],"#8-32":[.164,.014],
+ "#10-24":[.19,.0175],"#10-32":[.19,.02],"1/4-20":[.25,.0318],"1/4-28":[.25,.0364],
+ "5/16-18":[.3125,.0524],"3/8-16":[.375,.0775],"7/16-14":[.4375,.1063],
+ "1/2-13":[.5,.1419],"5/8-11":[.625,.226],"3/4-10":[.75,.334]};
+const GRADES={"SAE Gr 2":[55000,57000],"SAE Gr 5":[85000,92000],"SAE Gr 8":[120000,130000],
+ "SS F593 (18-8)":[65000,65000],"Metric 8.8":[84100,92800],"Metric 10.9":[120400,136300],
+ "Metric 12.9":[140700,159500]};
+
+const SEC={
+ rectangle:(b,h)=>({A:b*h,I:b*h**3/12,S:b*h**2/6,r:h/Math.sqrt(12)}),
+ round:d=>({A:Math.PI*d*d/4,I:Math.PI*d**4/64,S:Math.PI*d**3/32,r:d/4}),
+ tube:(od,id)=>{const A=Math.PI*(od*od-id*id)/4,I=Math.PI*(od**4-id**4)/64;
+   return {A,I,S:I/(od/2),r:Math.sqrt(I/A)};},
+ ibeam:(H,B,tf,tw)=>{const A=2*B*tf+(H-2*tf)*tw,I=B*H**3/12-(B-tw)*(H-2*tf)**3/12;
+   return {A,I,S:I/(H/2),r:Math.sqrt(I/A)};},
+};
+function sectionOf(v){
+  if(v.shape==="rectangle") return SEC.rectangle(v.b,v.h);
+  if(v.shape==="round")     return SEC.round(v.d);
+  if(v.shape==="ibeam")     return SEC.ibeam(v.H,v.B,v.tf,v.tw);
+  return SEC.tube(v.od,v.id);
+}
+const SHAPE_FIELDS=[
+ {k:"shape",l:"Shape",t:"select",o:[["rectangle","Rectangle"],["round","Solid round"],
+   ["tube","Round tube"],["ibeam","I-beam"]],d:"rectangle"},
+ {k:"b",l:"Width b",u:"in",d:1,show:v=>v.shape==="rectangle"},
+ {k:"h",l:"Height h",u:"in",d:1,show:v=>v.shape==="rectangle"},
+ {k:"d",l:"Diameter d",u:"in",d:1,show:v=>v.shape==="round"},
+ {k:"od",l:"OD",u:"in",d:1.5,show:v=>v.shape==="tube"},
+ {k:"id",l:"ID",u:"in",d:1.25,show:v=>v.shape==="tube"},
+ {k:"H",l:"Height H",u:"in",d:4,show:v=>v.shape==="ibeam"},
+ {k:"B",l:"Flange width B",u:"in",d:3,show:v=>v.shape==="ibeam"},
+ {k:"tf",l:"Flange thk tf",u:"in",d:.375,show:v=>v.shape==="ibeam"},
+ {k:"tw",l:"Web thk tw",u:"in",d:.25,show:v=>v.shape==="ibeam"},
+];
+const MATFIELD={k:"material",l:"Material",t:"select",o:MATNAMES.map(n=>[n,n]),d:"Steel A36 (HR)"};
+
+const RECT_SS=[[1,.2874,.0444],[1.2,.3762,.0616],[1.4,.453,.077],[1.6,.5172,.0906],
+ [1.8,.5688,.1017],[2,.6102,.111],[3,.7134,.1335],[4,.741,.14],[1000,.75,.1421]];
+const RECT_CL=[[1,.3078,.0138],[1.2,.3834,.0188],[1.4,.4356,.0226],[1.6,.468,.0251],
+ [1.8,.4872,.0267],[2,.4974,.0277],[1000,.5,.0284]];
+function stepLookup(tbl,x){let b=tbl[0][1],a=tbl[0][2];
+  for(const [r,bb,aa] of tbl){ if(x>=r){b=bb;a=aa;} else break; } return [b,a];}
+
+const VISC=[[50,1.4],[70,.95],[100,.68],[140,.47],[180,.35]];
+function viscAt(t){
+  if(t<=VISC[0][0])return VISC[0][1];
+  if(t>=VISC[VISC.length-1][0])return VISC[VISC.length-1][1];
+  for(let i=0;i<VISC.length-1;i++){const[a,va]=VISC[i],[b,vb]=VISC[i+1];
+    if(t>=a&&t<=b)return va+(t-a)/(b-a)*(vb-va);}
+  return VISC[VISC.length-1][1];
+}
+
+const BEAM_CASES={
+ ss_point:["Simply supported, centre point load","PL/4","PL³/48EI",(P,w,L)=>P*L/4,(P,w,L,E,I)=>P*L**3/(48*E*I)],
+ ss_uniform:["Simply supported, uniform load","wL²/8","5wL⁴/384EI",(P,w,L)=>w*L*L/8,(P,w,L,E,I)=>5*w*L**4/(384*E*I)],
+ cant_point:["Cantilever, end point load","PL","PL³/3EI",(P,w,L)=>P*L,(P,w,L,E,I)=>P*L**3/(3*E*I)],
+ cant_uniform:["Cantilever, uniform load","wL²/2","wL⁴/8EI",(P,w,L)=>w*L*L/2,(P,w,L,E,I)=>w*L**4/(8*E*I)],
+ fixed_point:["Fixed-fixed, centre point load","PL/8","PL³/192EI",(P,w,L)=>P*L/8,(P,w,L,E,I)=>P*L**3/(192*E*I)],
+ fixed_uniform:["Fixed-fixed, uniform load","wL²/12","wL⁴/384EI",(P,w,L)=>w*L*L/12,(P,w,L,E,I)=>w*L**4/(384*E*I)],
+};
+
+const CALCS={
+beams:{op:"01",label:"Beams",title:"Beam bending",
+ desc:"Six classic load cases. Max stress, deflection against an L/x limit, and the size needed for a target safety factor.",
+ fields:[
+  {k:"case",l:"Load case",t:"select",d:"ss_point",
+   o:Object.entries(BEAM_CASES).map(([k,v])=>[k,v[0]])},
+  {k:"L",l:"Span L",u:"in",d:20},
+  {k:"P",l:"Point load P",u:"lbf",d:500,show:v=>v.case.includes("point")},
+  {k:"w",l:"Distributed w",u:"lbf/in",d:10,show:v=>v.case.includes("uniform")},
+  MATFIELD,...SHAPE_FIELDS,
+  {k:"limit",l:"Deflection limit L/x",d:240},
+  {k:"sf",l:"Target safety factor",d:2},
+ ],
+ run(v){
+  const m=mat(v.material),s=sectionOf(v),C=BEAM_CASES[v.case];
+  const M=C[3](v.P,v.w,v.L), stress=M/s.S, defl=C[4](v.P,v.w,v.L,m.E,s.I);
+  const sf=stress?m.Sy/stress:null, allow=v.L/v.limit;
+  const warn=[];
+  if(defl>allow) warn.push(["warn",`Deflection ${fmt(defl)} in exceeds L/${v.limit} = ${fmt(allow)} in — stiffen it`]);
+  return {sf,
+   rows:[["Max moment M",M,"in-lbf"],["Bending stress",stress,"psi"],
+    ["Max deflection",defl,"in"],[`Allowable L/${v.limit}`,allow,"in"],
+    ["Section modulus S",s.S,"in³"],["Moment of inertia I",s.I,"in⁴"],
+    ["Weight",s.A*v.L*m.rho,"lbf"]],
+   solved:[["Required S",M*v.sf/m.Sy,"in³"],
+    ["Required h (rect, b as entered)",Math.sqrt(6*M*v.sf/(v.b*m.Sy)),"in"],
+    ["Required d (solid round)",Math.cbrt(32*M*v.sf/(Math.PI*m.Sy)),"in"]],
+   formula:`M = ${C[1]},  σ = M/S,  δ = ${C[2]},  SF = Sy/σ`, warn};
+ }},
+
+plates:{op:"02",label:"Plates",title:"Flat plate under pressure",
+ desc:"Circular and rectangular plates, uniform pressure, Roark small-deflection. Rectangular coefficients are tabulated at v = 0.3.",
+ fields:[
+  {k:"kind",l:"Plate",t:"select",d:"circular",o:[["circular","Circular"],["rect","Rectangular"]]},
+  {k:"edge",l:"Edge condition",t:"select",d:"clamped",
+   o:[["ss","Simply supported"],["clamped","Clamped"]]},
+  {k:"a",l:"Radius a",u:"in",d:3,show:v=>v.kind==="circular"},
+  {k:"la",l:"Long side a",u:"in",d:8,show:v=>v.kind==="rect"},
+  {k:"sb",l:"Short side b",u:"in",d:4,show:v=>v.kind==="rect"},
+  {k:"q",l:"Pressure q",u:"psi",d:200},
+  {k:"t",l:"Thickness t",u:"in",d:.75},
+  MATFIELD,{k:"sf",l:"Target safety factor",d:2},
+ ],
+ run(v){
+  const m=mat(v.material); let stress,defl,reqt,formula,extra=[];
+  if(v.kind==="circular"){
+   const D=m.E*v.t**3/(12*(1-m.nu**2));
+   if(v.edge==="ss"){
+    stress=3*(3+m.nu)*v.q*v.a**2/(8*v.t**2);
+    defl=((5+m.nu)/(1+m.nu))*v.q*v.a**4/(64*D);
+    reqt=v.a*Math.sqrt(3*(3+m.nu)*v.q*v.sf/(8*m.Sy));
+    formula="σ = 3(3+v)qa²/8t² (centre),  δ = ((5+v)/(1+v))qa⁴/64D";
+   } else {
+    stress=3*v.q*v.a**2/(4*v.t**2); defl=v.q*v.a**4/(64*D);
+    reqt=v.a*Math.sqrt(3*v.q*v.sf/(4*m.Sy));
+    formula="σ = 3qa²/4t² (edge),  δ = qa⁴/64D";
+   }
+   extra=[["Plate rigidity D",D,"lbf-in"]];
+  } else {
+   let a=v.la,b=v.sb; if(b>a){[a,b]=[b,a];}
+   const ratio=a/b, [beta,alpha]=stepLookup(v.edge==="ss"?RECT_SS:RECT_CL,ratio);
+   stress=beta*v.q*b*b/(v.t*v.t); defl=alpha*v.q*b**4/(m.E*v.t**3);
+   reqt=b*Math.sqrt(beta*v.q*v.sf/m.Sy);
+   formula="σ = βqb²/t²,  δ = αqb⁴/Et³,  t = b·√(βq·SF/Sy)";
+   extra=[["Aspect ratio a/b",ratio,""],["β",beta,""],["α",alpha,""]];
+  }
+  const sf=stress?m.Sy/stress:null, warn=[];
+  if(defl>v.t/2) warn.push(["warn",`Deflection ${fmt(defl)} in exceeds t/2 — small-deflection theory is stretched, consider membrane behaviour or FEA`]);
+  return {sf,rows:[...extra,["Max stress",stress,"psi"],["Max deflection",defl,"in"]],
+   solved:[["Required thickness t",reqt,"in"]],formula,warn};
+ }},
+
+columns:{op:"03",label:"Columns",title:"Column buckling",
+ desc:"Euler above the transition slenderness, J.B. Johnson below it. Enter the weak axis — a column buckles about its smaller I.",
+ fields:[
+  {k:"end",l:"End condition",t:"select",d:"pp",o:[["pp","Pinned-pinned"],["ff","Fixed-free"],
+    ["fp","Fixed-pinned"],["fx","Fixed-fixed"]]},
+  {k:"aisc",l:"K value",t:"select",d:"theory",o:[["theory","Theoretical"],["aisc","AISC design"]]},
+  {k:"L",l:"Unbraced length L",u:"in",d:30},
+  {k:"P",l:"Axial load P",u:"lbf",d:2000},
+  MATFIELD,...SHAPE_FIELDS.map(f=>f.k==="shape"?{...f,d:"round"}:f.k==="d"?{...f,d:.75}:f),
+ ],
+ run(v){
+  const K_T={pp:1,ff:2,fp:.7,fx:.5}, K_A={pp:1,ff:2.1,fp:.8,fx:.65};
+  const K=(v.aisc==="aisc"?K_A:K_T)[v.end];
+  const m=mat(v.material),s=sectionOf(v);
+  const sl=K*v.L/s.r, Cc=Math.sqrt(2*Math.PI**2*m.E/m.Sy);
+  const euler=sl>=Cc;
+  const scr=euler?Math.PI**2*m.E/(sl*sl):m.Sy*(1-m.Sy*sl*sl/(4*Math.PI**2*m.E));
+  const Pcr=scr*s.A, sf=v.P?Pcr/v.P:null, warn=[];
+  if(sf!==null&&sf<3) warn.push(["warn",`Safety factor ${sf.toFixed(2)} — buckling fails suddenly, 3+ is the usual target`]);
+  if(v.aisc==="theory"&&(v.end==="fx"||v.end==="fp"))
+   warn.push(["warn","Theoretical K assumes ideal end fixity; real joints are softer — try the AISC design value"]);
+  return {sf,sfTarget:3,
+   rows:[["K",K,""],["Slenderness KL/r",sl,""],["Transition Cc",Cc,""],
+    ["Regime",euler?"Euler (long)":"Johnson (intermediate)",""],
+    ["Critical stress",scr,"psi"],["Critical load Pcr",Pcr,"lbf"]],
+   formula:euler?"σcr = π²E/(KL/r)²,  Pcr = σcr·A":"σcr = Sy(1 − Sy(KL/r)²/4π²E),  Pcr = σcr·A",warn};
+ }},
+
+shafts:{op:"04",label:"Shafts",title:"Shaft — bending and torsion",
+ desc:"Static combined loading by von Mises, with a twist check. Rotating shafts need a Shigley fatigue check on top of this.",
+ fields:[
+  {k:"d",l:"Diameter d",u:"in",d:.75},
+  {k:"M",l:"Bending moment M",u:"in-lbf",d:200},
+  {k:"hp",l:"Power",u:"HP",d:5},
+  {k:"rpm",l:"Speed",u:"RPM",d:1750},
+  {k:"T",l:"Torque (overrides HP)",u:"in-lbf",d:0},
+  {k:"L",l:"Length for twist",u:"in",d:12},
+  {...MATFIELD,d:"Steel 4140 (Q&T 28HRC)"},
+  {k:"sf",l:"Target safety factor",d:2},
+ ],
+ run(v){
+  const m=mat(v.material);
+  const T=v.T>0?v.T:(v.hp&&v.rpm?63025*v.hp/v.rpm:0);
+  const J=Math.PI*v.d**4/32;
+  const tau=16*T/(Math.PI*v.d**3), sb=32*v.M/(Math.PI*v.d**3);
+  const vm=Math.sqrt(sb*sb+3*tau*tau), sf=vm?m.Sy/vm:null;
+  const twist=(v.L&&T)?T*v.L/(m.G*J)*180/Math.PI:0;
+  const warn=[["warn","Static check only — keyways, steps and press fits concentrate stress; add fatigue for anything rotating"]];
+  if(v.L&&twist){const perFt=twist/(v.L/12);
+   if(perFt>.08) warn.unshift(["warn",`Twist ${perFt.toFixed(3)} deg/ft exceeds the 0.08 deg/ft rule of thumb for power shafts`]);}
+  return {sf,
+   rows:[["Torque T",T,"in-lbf"],["Torsional shear",tau,"psi"],["Bending stress",sb,"psi"],
+    ["von Mises",vm,"psi"],["Polar inertia J",J,"in⁴"],["Twist over L",twist,"deg"]],
+   solved:[["Required diameter d",Math.cbrt(32*v.sf*Math.sqrt(v.M**2+.75*T*T)/(Math.PI*m.Sy)),"in"]],
+   formula:"τ = 16T/πd³,  σb = 32M/πd³,  σ' = √(σb² + 3τ²),  θ = TL/GJ",warn};
+ }},
+
+bolts:{op:"05",label:"Bolts",title:"Bolted joint",
+ desc:"Preload, tightening torque, and how much load the joint takes before the bolt yields or the faces separate.",
+ fields:[
+  {k:"thread",l:"Thread",t:"select",d:"3/8-16",o:Object.keys(THREADS).map(k=>[k,k])},
+  {k:"grade",l:"Grade",t:"select",d:"SAE Gr 5",o:Object.keys(GRADES).map(k=>[k,k])},
+  {k:"frac",l:"Preload, fraction of proof",d:.75},
+  {k:"K",l:"Nut factor K",t:"select",d:"0.2",
+   o:[["0.2","0.20 — dry steel"],["0.15","0.15 — zinc plated"],["0.12","0.12 — lubricated"]]},
+  {k:"P",l:"External tensile load P",u:"lbf",d:1000},
+  {k:"C",l:"Joint stiffness constant C",d:.25},
+  {k:"V",l:"Shear load V",u:"lbf",d:0},
+ ],
+ run(v){
+  const [d,At]=THREADS[v.thread], [proof,Sy]=GRADES[v.grade], K=parseFloat(v.K);
+  const Fp=proof*At, Fi=v.frac*Fp, Tq=K*Fi*d, Fb=Fi+v.C*v.P;
+  const sf=Fb?Fp/Fb:null;
+  const lf=(v.C*v.P)?(Sy*At-Fi)/(v.C*v.P):null;
+  const sep=v.P?Fi/((1-v.C)*v.P):null;
+  const warn=[["warn","Torque-controlled preload scatters ±25% — verify a critical joint by turn-of-nut or direct measurement"]];
+  if(sep!==null&&sep<1) warn.unshift(["fail",`Joint separates at ${sep.toFixed(2)}× the applied load`]);
+  const rows=[["Nominal dia d",d,"in"],["Tensile stress area At",At,"in²"],
+   ["Proof load Fp",Fp,"lbf"],["Preload Fi",Fi,"lbf"],
+   ["Tightening torque",Tq,"in-lbf"],["Tightening torque",Tq/12,"ft-lbf"],
+   ["Bolt force Fb",Fb,"lbf"],["Load factor to yield",lf,"× P"],
+   ["Separation factor",sep,"× P"]];
+  if(v.V) rows.push(["SF in shear",.577*Sy/(v.V/At),""]);
+  return {sf,rows,formula:"Fp = proof·At,  Fi = frac·Fp,  T = K·Fi·d,  Fb = Fi + C·P",warn};
+ }},
+
+pressure:{op:"06",label:"Pressure",title:"Thin-wall pressure vessel",
+ desc:"Hoop stress, required wall, and the blow-off load a flat cover puts on its bolts. Anything code-regulated gets sized per ASME BPVC, not here.",
+ fields:[
+  {k:"ID",l:"Inside diameter",u:"in",d:4},
+  {k:"t",l:"Wall thickness t",u:"in",d:.12},
+  {k:"P",l:"Internal pressure P",u:"psi",d:150},
+  MATFIELD,{k:"sf",l:"Target safety factor",d:3},
+  {k:"n",l:"Cover bolts",d:8},
+ ],
+ run(v){
+  const m=mat(v.material), r=v.ID/2;
+  const hoop=v.P*r/v.t, lon=hoop/2, sf=hoop?m.Sy/hoop:null;
+  const F=v.P*Math.PI*r*r;
+  const warn=[];
+  if(v.t>r/10) warn.push(["warn",`t = ${fmt(v.t)} in exceeds r/10 = ${fmt(r/10)} in — thin-wall theory no longer applies, use Lamé`]);
+  return {sf,
+   rows:[["Radius r",r,"in"],["Hoop stress",hoop,"psi"],["Longitudinal stress",lon,"psi"],
+    ["Sphere / dished end stress",lon,"psi"],["End-cap force",F,"lbf"],
+    ["Tensile load per bolt",v.n?F/v.n:null,"lbf"]],
+   solved:[["Required wall (cylinder)",v.sf*v.P*r/m.Sy,"in"],
+    ["Required wall (sphere)",v.sf*v.P*r/(2*m.Sy),"in"]],
+   formula:"σ_hoop = Pr/t,  σ_long = Pr/2t,  F = P·πr²",warn};
+ }},
+
+cooling:{op:"07",label:"Cooling",title:"Cooling lines and heat",
+ desc:"Flow to carry a heat load, whether the circuit is actually turbulent, and what it costs in pressure. Laminar flow moves very little heat no matter how much water you push.",
+ fields:[
+  {k:"Q",l:"Heat load Q",u:"BTU/hr",d:20000},
+  {k:"dT",l:"Coolant rise dT",u:"F",d:4},
+  {k:"d",l:"Channel diameter",u:"in",d:.4375},
+  {k:"gpm",l:"Flow this circuit",u:"GPM",d:2},
+  {k:"temp",l:"Water temperature",u:"F",d:100},
+  {k:"len",l:"Circuit length",u:"ft",d:10},
+  {k:"rough",l:"Wall roughness e",u:"in",d:.0018},
+  {k:"K",l:"Minor-loss K total",d:6},
+  {k:"pump",l:"Pump available",u:"psi",d:8},
+ ],
+ run(v){
+  const need=v.dT?v.Q/(500*v.dT):0;
+  const nu=viscAt(v.temp);
+  const V=.4085*v.gpm/(v.d*v.d), Re=3160*v.gpm/(v.d*nu);
+  const f=.25/Math.pow(Math.log10(v.rough/(3.7*v.d)+5.74/Math.pow(Re,.9)),2);
+  const hf=f*(12*v.len/v.d)*V*V/(2*32.174), hm=v.K*V*V/(2*32.174);
+  const dp=.4331*(hf+hm), margin=v.pump-dp;
+  let regime = Re>=10000?"Fully turbulent — ideal":Re>=4000?"Turbulent — OK":
+               Re>=2300?"Transitional":"Laminar — poor heat transfer";
+  const warn=[];
+  if(Re<4000) warn.push(["fail",`Re = ${Math.round(Re).toLocaleString()} — not reliably turbulent, heat transfer will disappoint`]);
+  if(V<1) warn.push(["warn",`Velocity ${V.toFixed(2)} ft/s is below the 1–2 ft/s minimum`]);
+  if(V>10) warn.push(["warn",`Velocity ${V.toFixed(2)} ft/s risks erosion`]);
+  if(margin<0) warn.push(["fail","Short on head — bigger pump, larger channel, or split the circuit"]);
+  return {sf:null,
+   rows:[["Required total flow",need,"GPM"],["Viscosity",nu,"cSt"],["Velocity",V,"ft/s"],
+    ["Reynolds",Re,""],["Regime",regime,""],["Friction factor f",f,""],
+    ["Friction head",hf,"ft"],["Minor-loss head",hm,"ft"],
+    ["Total pressure drop",dp,"psi"],["Pump margin",margin,"psi"]],
+   formula:"GPM = Q/(500·dT),  V = 0.4085·GPM/d²,  Re = 3160·GPM/(d·v),  Δp = 0.4331(hf + hm)",warn};
+ }},
+
+sections:{op:"08",label:"Sections",title:"Section properties",
+ desc:"Area, moment of inertia, section modulus and radius of gyration about the horizontal bending axis.",
+ fields:[...SHAPE_FIELDS.map(f=>f.k==="h"?{...f,d:2}:f)],
+ run(v){
+  const s=sectionOf(v);
+  return {sf:null,rows:[["Area A",s.A,"in²"],["Moment of inertia I",s.I,"in⁴"],
+   ["Section modulus S",s.S,"in³"],["Radius of gyration r",s.r,"in"]],
+   formula:"I about the horizontal axis; S = I/c; r = √(I/A)",warn:[]};
+ }},
+};
+
+const SI={in:[25.4,"mm"],"in²":[645.16,"mm²"],"in³":[16387.1,"mm³"],"in⁴":[416231,"mm⁴"],
+ lbf:[4.44822,"N"],"lbf/in":[175.127,"N/m"],psi:[.00689476,"MPa"],"in-lbf":[.112985,"N·m"],
+ "ft-lbf":[1.35582,"N·m"],GPM:[3.78541,"L/min"],"BTU/hr":[.293071,"W"],F:[null,"°C"],
+ "ft/s":[.3048,"m/s"],ft:[.3048,"m"],HP:[.7457,"kW"]};
+let metric=false;
+function conv(val,unit){
+  if(!metric||val==null||typeof val!=="number") return [val,unit];
+  const c=SI[unit]; if(!c) return [val,unit];
+  if(unit==="F") return [(val-32)/1.8,"°C"];
+  return [val*c[0],c[1]];
+}
+
+function fmt(x){
+  if(x==null) return "—";
+  if(typeof x==="string") return x;
+  if(!isFinite(x)) return "—";
+  const a=Math.abs(x);
+  if(a===0) return "0";
+  if(a>=1e6||a<1e-4) return x.toExponential(3);
+  if(a>=1000) return x.toLocaleString(undefined,{maximumFractionDigits:0});
+  if(a>=100) return x.toFixed(1);
+  if(a>=1) return x.toFixed(3).replace(/0+$/,"").replace(/\.$/,"");
+  return x.toPrecision(4).replace(/0+$/,"").replace(/\.$/,"");
+}
+const cls=sf=>sf==null?"none":sf<1?"fail":sf<1.5?"warn":"ok";
+const word=sf=>sf==null?"—":sf<1?"FAIL":sf<1.5?"MARGINAL":"OK";
+
+let current="beams", state={};
+const $=s=>document.querySelector(s);
+
+function defaults(calc){
+  const v={}; for(const f of CALCS[calc].fields) v[f.k]=f.d; return v;
+}
+function visible(calc){
+  return CALCS[calc].fields.filter(f=>!f.show||f.show(state[calc]));
+}
+
+function buildNav(){
+  $("#nav").innerHTML=Object.entries(CALCS).map(([k,c])=>
+   `<li><button data-c="${k}" ${k===current?'aria-current="true"':""}>${c.label}<span class="op">${c.op}</span></button></li>`).join("");
+  $("#nav").onclick=e=>{const b=e.target.closest("button"); if(!b)return;
+   current=b.dataset.c; buildNav(); render();};
+}
+
+function render(){
+  const c=CALCS[current], v=state[current];
+  $("#ctitle").textContent=c.title; $("#cdesc").textContent=c.desc;
+
+  $("#inputs").innerHTML=`<fieldset class="group"><p class="grouptitle">Inputs</p>${
+   visible(current).map(f=>{
+    const val=v[f.k];
+    if(f.t==="select") return `<div class="field wide"><label for="i-${f.k}">${f.l}</label>
+      <select id="i-${f.k}" data-k="${f.k}">${f.o.map(([ov,ol])=>
+        `<option value="${ov}"${String(ov)===String(val)?" selected":""}>${ol}</option>`).join("")}</select></div>`;
+    const [dv,du]=conv(val,f.u);
+    return `<div class="field"><label for="i-${f.k}">${f.l}${f.u?` <span class="u">${du||f.u}</span>`:""}</label>
+      <input id="i-${f.k}" data-k="${f.k}" data-unit="${f.u||""}" type="number" step="any" value="${
+        typeof dv==="number"?+dv.toFixed(6):dv}"></div>`;
+   }).join("")}</fieldset>`;
+
+  let r;
+  try{ r=c.run(v); }
+  catch(err){ $("#results").innerHTML=`<div class="note fail"><b>Check the inputs.</b> ${err.message}</div>`; return; }
+
+  const sf=r.sf, target=r.sfTarget||1.5;
+  const pct=sf==null?0:Math.min(sf/3,1)*100;
+  const gauge=sf==null?"":`<div class="gauge">
+    <div class="gtrack"><div class="gfill" style="width:${pct}%;background:var(--${cls(sf)})"></div>
+      <div class="gmark" style="left:33.3%"></div><div class="gmark" style="left:50%"></div></div>
+    <div class="gscale"><span>0</span><span>1.0</span><span>1.5</span><span>3.0+</span></div></div>`;
+
+  const row=([l,val,u])=>{const [cv,cu]=conv(val,u);
+    return `<tr><td>${l}</td><td class="num">${fmt(cv)}${cu?`<span class="unit">${cu}</span>`:""}</td></tr>`;};
+
+  $("#results").innerHTML=`
+   ${sf!==null?`<div class="verdict"><div class="vtop">
+     <div class="sfblock"><div class="sflabel">Safety factor</div>
+       <div class="sfval" style="color:var(--${cls(sf)})">${sf==null?"—":sf.toFixed(2)}</div>
+       <span class="chip ${cls(sf)}">${word(sf)}</span></div>
+     ${gauge}</div></div>`:""}
+   <div class="group"><p class="grouptitle">Results</p>
+     <div class="tablewrap"><table><thead><tr><th>Quantity</th><th>Value</th></tr></thead>
+     <tbody>${r.rows.map(row).join("")}</tbody></table></div>
+     <div class="formula">${r.formula}</div>
+     ${r.warn.map(([k,t])=>`<div class="note ${k}">${t}</div>`).join("")}
+   </div>
+   ${r.solved?`<div class="group"><p class="grouptitle">Sized for SF ${v.sf}</p>
+     <div class="tablewrap"><table><tbody>${r.solved.map(row).join("")}</tbody></table></div></div>`:""}
+   <div class="actions">
+     <button class="btn primary" id="copy">Copy as markdown</button>
+     <button class="btn" id="reset">Reset inputs</button>
+   </div>`;
+
+  $("#copy").onclick=()=>copyMd(r);
+  $("#reset").onclick=()=>{state[current]=defaults(current);render();};
+}
+
+function copyMd(r){
+  const c=CALCS[current], v=state[current];
+  const L=[`### ${c.title}`,""];
+  L.push("| Input | Value | Unit |","| --- | --- | --- |");
+  for(const f of visible(current)){
+    const lbl=f.t==="select"?(f.o.find(o=>String(o[0])===String(v[f.k]))||[,v[f.k]])[1]:v[f.k];
+    L.push(`| ${f.l} | ${lbl} | ${f.u||""} |`);
+  }
+  L.push("",`\`${r.formula}\``,"");
+  L.push("| Result | Value | Unit |","| --- | --- | --- |");
+  for(const [l,val,u] of r.rows) L.push(`| ${l} | ${fmt(val)} | ${u} |`);
+  if(r.sf!=null) L.push(`| Safety factor | ${r.sf.toFixed(2)} | ${word(r.sf)} |`);
+  if(r.solved) for(const [l,val,u] of r.solved) L.push(`| ${l} | ${fmt(val)} | ${u} |`);
+  if(r.warn.length){L.push("");for(const [,t] of r.warn) L.push(`> **${t}**`);}
+  const text=L.join("\n");
+  navigator.clipboard.writeText(text).then(()=>{
+    const b=$("#copy"); b.textContent="Copied"; setTimeout(()=>b.textContent="Copy as markdown",1400);
+  }).catch(()=>{ const b=$("#copy"); b.textContent="Copy failed"; });
+}
+
+document.addEventListener("input",e=>{
+  const el=e.target; if(!el.dataset.k) return;
+  const v=state[current];
+  v[el.dataset.k]=el.type==="number"?parseFloat(el.value)||0:el.value;
+  if(metric&&el.dataset.unit){
+    const u=el.dataset.unit, c=SI[u];
+    if(c) v[el.dataset.k]= u==="F" ? (parseFloat(el.value)*1.8+32) : parseFloat(el.value)/c[0];
+  }
+  if(el.tagName==="SELECT") render(); else {
+    const r=(()=>{try{return CALCS[current].run(v);}catch(_){return null;}})();
+    if(r) renderResultsOnly(r);
+  }
+});
+function renderResultsOnly(r){ const k=document.activeElement?.dataset?.k; render();
+  if(k){const el=document.querySelector(`[data-k="${k}"]`); if(el){el.focus();
+    if(el.setSelectionRange&&el.type!=="number"){} }} }
+
+$("#us").onclick=()=>setUnits(false);
+$("#si").onclick=()=>setUnits(true);
+function setUnits(m){metric=m;$("#us").setAttribute("aria-pressed",String(!m));
+ $("#si").setAttribute("aria-pressed",String(m));render();}
+
+// Self-check: 19 vectors exported from the Python package, themselves validated
+// against the source spreadsheet. If a formula here drifts, this goes red.
+const VECTORS=[
+ ["beam.ss_point.M",()=>CALCS.beams.run({...defaults("beams")}).rows[0][1],2500],
+ ["beam.ss_point.stress",()=>CALCS.beams.run({...defaults("beams")}).rows[1][1],15000],
+ ["beam.ss_point.defl",()=>CALCS.beams.run({...defaults("beams")}).rows[2][1],0.0344827586206897],
+ ["beam.ss_point.sf",()=>CALCS.beams.run({...defaults("beams")}).sf,2.4],
+ ["plate.circ.stress",()=>CALCS.plates.run({...defaults("plates"),material:"Tool steel P20 (30HRC)"}).rows[1][1],2400],
+ ["plate.circ.req_t",()=>CALCS.plates.run({...defaults("plates"),material:"Tool steel P20 (30HRC)"}).solved[0][1],0.146969384566991],
+ ["plate.rect.stress",()=>CALCS.plates.run({...defaults("plates"),kind:"rect",edge:"ss",q:100,t:.5}).rows[3][1],3905.28],
+ ["plate.rect.req_t",()=>CALCS.plates.run({...defaults("plates"),kind:"rect",edge:"ss",q:100,t:.5}).solved[0][1],0.232894826048154],
+ ["col.slender",()=>CALCS.columns.run({...defaults("columns")}).rows[1][1],160],
+ ["col.Pcr",()=>CALCS.columns.run({...defaults("columns")}).rows[5][1],4939.35437839249],
+ ["shaft.vm",()=>CALCS.shafts.run({...defaults("shafts")}).rows[3][1],6123.31970165976],
+ ["shaft.twist",()=>CALCS.shafts.run({...defaults("shafts")}).rows[5][1],0.346231834747305],
+ ["bolt.torque",()=>CALCS.bolts.run({...defaults("bolts")}).rows[4][1],370.546875],
+ ["bolt.sep",()=>CALCS.bolts.run({...defaults("bolts")}).rows[8][1],6.5875],
+ ["press.hoop",()=>CALCS.pressure.run({...defaults("pressure")}).rows[1][1],2500],
+ ["press.req_t",()=>CALCS.pressure.run({...defaults("pressure")}).solved[0][1],0.025],
+ ["cool.Re",()=>CALCS.cooling.run({...defaults("cooling")}).rows[3][1],21243.6974789916],
+ ["cool.dp",()=>CALCS.cooling.run({...defaults("cooling")}).rows[8][1],1.86046748238485],
+ ["sec.ibeam.I",()=>CALCS.sections.run({...defaults("sections"),shape:"ibeam"}).rows[1][1],8.13313802083333],
+];
+function selfCheck(){
+  let bad=[];
+  for(const [name,fn,want] of VECTORS){
+    let got; try{got=fn();}catch(e){bad.push(name);continue;}
+    if(got==null||Math.abs(got-want)>Math.abs(want)*1e-9+1e-12) bad.push(name);
+  }
+  const el=$("#check");
+  if(bad.length){
+    el.textContent=`${bad.length}/${VECTORS.length} checks FAILED: ${bad.slice(0,3).join(", ")}`;
+    el.style.background="var(--fail-bg)"; el.style.color="var(--fail)";
+  } else {
+    el.textContent=`${VECTORS.length}/${VECTORS.length} checks match the spreadsheet`;
+    el.style.background="var(--ok-bg)"; el.style.color="var(--ok)";
+  }
+}
+
+for(const k of Object.keys(CALCS)) state[k]=defaults(k);
+buildNav(); render(); selfCheck();
+</script>

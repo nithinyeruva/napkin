@@ -274,6 +274,45 @@ tr:last-child td{border-bottom:0}
 }
 .mfoot .hint{font-size:11.5px;color:var(--ink-3);margin-right:auto;max-width:44ch;line-height:1.4}
 
+/* Glossary */
+.term{
+  border-bottom:1px dotted var(--ink-3);cursor:help;
+  background:none;border-left:0;border-right:0;border-top:0;padding:0;
+  font:inherit;color:inherit;text-align:inherit;
+}
+.term:hover{border-bottom-color:var(--dye);color:var(--dye)}
+.term:focus-visible{outline:2px solid var(--dye);outline-offset:2px;border-radius:2px}
+.infobtn{
+  border:1px solid var(--rule-2);border-radius:50%;width:13px;height:13px;
+  line-height:1;font-size:9px;color:var(--ink-3);cursor:help;
+  display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:1px;font-family:var(--mono);flex:none;
+}
+.infobtn:hover{border-color:var(--dye);color:var(--dye);background:var(--dye-soft)}
+.tip{
+  position:fixed;z-index:70;width:min(310px,calc(100vw - 24px));
+  background:var(--card);border:1px solid var(--rule-2);border-radius:9px;
+  box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px 14px;
+  font-size:12.5px;line-height:1.5;color:var(--ink-2);
+}
+.tip h4{
+  margin:0 0 5px;font-size:12.5px;font-weight:640;color:var(--ink);
+  display:flex;align-items:baseline;gap:7px;
+}
+.tip h4 .sym{font-family:var(--mono);font-size:11px;color:var(--dye);font-weight:600}
+.tip p{margin:0 0 7px}
+.tip p:last-child{margin-bottom:0}
+.tip .rule{
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  border-top:1px solid var(--rule);padding-top:7px;margin-top:8px;
+}
+.tip svg{display:block;width:100%;height:auto;margin:8px 0 2px}
+.tip .eq{
+  font-family:var(--mono);font-size:11.5px;color:var(--ink);
+  background:var(--sunk);border-radius:5px;padding:5px 7px;margin:6px 0;
+  overflow-x:auto;white-space:nowrap;
+}
+
 /* Findings */
 .finding{
   display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.45;
@@ -976,6 +1015,256 @@ function renderDiagram(){
    ${curveSvg()}`;
 }
 
+/* ---- Glossary -------------------------------------------------------------
+   Definitions written the way you'd explain it at the machine: what it is,
+   what it means for the part, then the rule of thumb. A small diagram where a
+   picture carries it better than a sentence.                                 */
+
+const TV='viewBox="0 0 260 88" xmlns="http://www.w3.org/2000/svg"';
+const G={
+ "Section modulus S":{sym:"S = I/c",
+  d:"How much bending a cross-section can take, geometry only. It's the moment of inertia divided by the distance from the neutral axis to the furthest fibre.",
+  n:"Bending stress is simply M/S, so doubling S halves the stress for the same load.",
+  r:"Depth buys far more than width — S goes with h².",
+  svg:`<svg ${TV}><rect class="dg-body" x="88" y="16" width="46" height="56"/>
+   <path class="dg-thin" d="M74,44 L148,44" stroke-dasharray="4 3"/>
+   <text class="dg-txt" x="152" y="47">neutral axis</text>
+   <path class="dg-dim" d="M80,44 L80,16 M76,44 L84,44 M76,16 L84,16"/>
+   <text class="dg-key" x="66" y="33">c</text></svg>`},
+ "Moment of inertia I":{sym:"I",
+  d:"How the area of a section is distributed about the bending axis. Material far from the neutral axis contributes enormously more than material near it.",
+  n:"Deflection is inversely proportional to I — this is the number to chase when something is too bendy.",
+  r:"For a rectangle I = bh³/12. Triple the depth, twenty-seven times the stiffness."},
+ "Radius of gyration r":{sym:"r = √(I/A)",
+  d:"An equivalent distance describing how spread out a section is. It's what turns a length into a slenderness.",
+  n:"A tube has a much larger r than a solid rod of the same area — which is exactly why tubes make better columns.",
+  svg:`<svg ${TV}><circle class="dg-body" cx="72" cy="44" r="26"/>
+   <circle class="dg-body" cx="176" cy="44" r="26"/><circle cx="176" cy="44" r="19" fill="var(--card)" stroke="var(--ink)" stroke-width="1.5"/>
+   <text class="dg-txt" x="72" y="82" text-anchor="middle">solid</text>
+   <text class="dg-txt" x="176" y="82" text-anchor="middle">tube — same area, bigger r</text></svg>`},
+ "Safety factor":{sym:"SF = Sy/σ",
+  d:"How many times the applied stress could grow before the material yields. Above 1 means it holds as calculated.",
+  n:"It is not spare capacity you should plan to use — it absorbs what you didn't model: tolerance, material scatter, a load path you missed, someone standing on it.",
+  r:"1.5–3 static and well understood · 3+ for buckling, shock or uncertainty · under 1.5 only if you know the load exactly."},
+ "Max deflection":{sym:"δ",
+  d:"How far the part actually moves under load. Independent of strength — a part can be nowhere near yielding and still be uselessly floppy.",
+  n:"Governed by E and I, not by yield strength. Switching from mild steel to alloy steel changes strength enormously and stiffness almost not at all.",
+  r:"L/240 general, L/360 where fit or finish matters.",
+  svg:`<svg ${TV}><path class="dg-line" d="M40,30 L220,30"/>
+   <path class="dg-defl" d="M40,30 C100,62 160,62 220,30"/>
+   <path class="dg-dim" d="M130,30 L130,54 M126,30 L134,30 M126,54 L134,54"/>
+   <text class="dg-key" x="138" y="47">δ</text></svg>`},
+ "Slenderness KL/r":{sym:"KL/r",
+  d:"The single number that decides how a column fails. Effective length over radius of gyration.",
+  n:"Low means it squashes, high means it bows out sideways long before the material cares.",
+  r:"Compare it to Cc: above, Euler governs; below, Johnson."},
+ "Transition Cc":{sym:"Cc = √(2π²E/Sy)",
+  d:"The slenderness where buckling stops being a stability problem and starts being a strength problem.",
+  n:"Above Cc the column is long and Euler applies. Below it, the column partially yields before it buckles, and Johnson's parabola fits reality better.",
+  svg:`<svg ${TV}><path class="dg-grid" d="M34,72 L232,72" stroke="var(--rule)"/>
+   <path class="cv-line" d="M34,20 C70,20 92,34 116,46"/>
+   <path class="cv-line" d="M116,46 C150,62 190,68 232,70" stroke="var(--dye)" opacity=".55"/>
+   <path class="cv-thr" d="M116,12 L116,72" stroke="var(--warn)"/>
+   <text class="dg-txt" x="120" y="20">Cc</text>
+   <text class="dg-txt" x="60" y="66">Johnson</text><text class="dg-txt" x="176" y="60">Euler</text></svg>`},
+ "Critical load Pcr":{sym:"Pcr",
+  d:"The axial load at which the column buckles. Past it, deflection runs away — there is no gradual warning.",
+  r:"Because failure is sudden, aim for SF 3+ here rather than the 1.5 you'd take on yield."},
+ "von Mises":{sym:"σ' = √(σb² + 3τ²)",
+  d:"One equivalent stress combining bending and torsion, so a single number can be compared against yield.",
+  n:"The factor of 3 on shear is why torsion punishes a shaft harder than the raw number suggests.",
+  svg:`<svg ${TV}><rect class="dg-body" x="52" y="30" width="156" height="26" rx="2"/>
+   <path class="dg-load" d="M64,22 A18,12 0 0 1 94,22 M64,22 l5,-4 M64,22 l1,-6"/>
+   <path class="dg-load" d="M130,10 L130,26 M126,21 L130,26 L134,21"/>
+   <text class="dg-key" x="79" y="14" text-anchor="middle">T</text>
+   <text class="dg-key" x="140" y="18">M</text>
+   <text class="dg-txt" x="130" y="76" text-anchor="middle">both act at once — combine before comparing to Sy</text></svg>`},
+ "Torsional shear":{sym:"τ = 16T/πd³",
+  d:"Shear stress at the surface of a round shaft from applied torque. Zero at the centre, maximum at the outside.",
+  r:"Cubic in diameter — a 20% bigger shaft carries about 1.7× the torque."},
+ "Polar inertia J":{sym:"J = πd⁴/32",
+  d:"The torsional equivalent of moment of inertia. Governs how much a shaft twists.",
+  n:"Twice the I of the same round section, because torsion resists about the centre rather than a single axis."},
+ "Twist over L":{sym:"θ = TL/GJ",
+  d:"Angle one end rotates relative to the other under torque.",
+  r:"Under 0.08 deg/ft for power transmission shafts; tighter for anything positioning."},
+ "Preload Fi":{sym:"Fi",
+  d:"The tension you put into a bolt by tightening it, clamping the joint before any external load arrives.",
+  n:"This is the whole point of a bolted joint. A properly preloaded bolt barely feels the applied load — the joint carries it as reduced compression instead.",
+  r:"75% of proof for reusable joints, 90% for permanent.",
+  svg:`<svg ${TV}><rect class="dg-body" x="60" y="30" width="140" height="14"/>
+   <rect class="dg-body" x="60" y="44" width="140" height="14"/>
+   <rect class="dg-fill" x="122" y="18" width="16" height="8"/>
+   <rect class="dg-fill" x="125" y="26" width="10" height="40"/>
+   <rect class="dg-fill" x="122" y="62" width="16" height="8"/>
+   <path class="dg-dim" d="M212,30 L212,58 M208,30 L216,30 M208,58 L216,58"/>
+   <text class="dg-key" x="220" y="47">Fi</text></svg>`},
+ "Proof load Fp":{sym:"Fp = proof × At",
+  d:"The tension a bolt can take without any permanent stretch. Not the breaking load — the elastic limit.",
+  n:"Preload is set as a fraction of this."},
+ "Tensile stress area At":{sym:"At",
+  d:"The effective cross-section of a threaded fastener, between the minor and pitch diameters.",
+  n:"Always smaller than the nominal shank area — using the shank diameter overestimates capacity."},
+ "Nut factor K":{sym:"T = K·Fi·d",
+  d:"An empirical lumped constant relating tightening torque to the preload you actually achieve. Mostly friction under the head and in the threads.",
+  n:"Most of your torque fights friction, not tension — only about 10-15% becomes clamp load.",
+  r:"0.20 dry steel · 0.15 zinc plated · 0.12 well lubricated. Torque control is ±25% at best."},
+ "Joint stiffness constant C":{sym:"C",
+  d:"The share of an external load that lands on the bolt rather than unloading the clamped faces.",
+  n:"A stiff joint with a springy bolt gives a low C, which is what you want — the bolt sees little of the applied load.",
+  r:"0.2–0.3 for metal-on-metal. Add a soft gasket and it climbs."},
+ "Separation factor":{sym:"Fi/((1−C)P)",
+  d:"How many times the applied load the joint takes before the clamped faces actually lift apart.",
+  n:"Often what governs a joint, well before the bolt itself is in danger. Once faces separate the bolt takes the full load directly and fatigue life collapses."},
+ "Load factor to yield":{sym:"(Sy·At − Fi)/(C·P)",
+  d:"How many times the applied load before the bolt itself yields."},
+ "Hoop stress":{sym:"σ = Pr/t",
+  d:"Circumferential stress trying to split a pressurised cylinder along its length.",
+  n:"Exactly twice the longitudinal stress — which is why a pressurised tube splits lengthwise, not around.",
+  r:"Thin-wall theory only holds while t ≤ r/10.",
+  svg:`<svg ${TV}><circle class="dg-body" cx="130" cy="44" r="30"/>
+   <circle cx="130" cy="44" r="24" fill="var(--card)" stroke="var(--ink)" stroke-width="1.5"/>
+   <path class="dg-load" d="M130,32 L130,18 M126,23 L130,18 L134,23"/>
+   <path class="dg-load" d="M130,56 L130,70 M126,65 L130,70 L134,65"/>
+   <text class="dg-txt" x="176" y="47">splits lengthwise</text></svg>`},
+ "Longitudinal stress":{sym:"σ = Pr/2t",
+  d:"Axial stress from pressure pushing on the end caps. Half the hoop stress in the same vessel."},
+ "Reynolds":{sym:"Re = 3160·GPM/(d·v)",
+  d:"Whether flow is orderly or chaotic. Below about 2300 it's laminar — smooth layers that slide past each other and barely mix.",
+  n:"Laminar flow is a thermal disaster: the layer touching the wall stays there, insulating everything behind it. Turbulent flow constantly swaps hot fluid at the wall for cool fluid from the core.",
+  r:"10,000+ for mold cooling. Below 4,000 you are wasting pump energy for very little heat transfer.",
+  svg:`<svg ${TV}><path class="dg-thin" d="M20,16 L120,16 M20,64 L120,64"/>
+   <path class="dg-load" d="M30,28 L108,28 M30,40 L108,40 M30,52 L108,52"/>
+   <text class="dg-txt" x="70" y="80" text-anchor="middle">laminar</text>
+   <path class="dg-thin" d="M140,16 L240,16 M140,64 L240,64"/>
+   <path class="dg-load" d="M148,40 C160,24 172,56 184,34 C196,20 208,54 220,38 C226,32 232,42 236,40"/>
+   <path class="dg-load" d="M150,26 C164,44 176,22 190,46 C202,60 214,28 232,30"/>
+   <text class="dg-txt" x="190" y="80" text-anchor="middle">turbulent</text></svg>`},
+ "Velocity":{sym:"V = 0.4085·GPM/d²",
+  d:"Bulk flow speed through the channel.",
+  r:"1–2 ft/s minimum to stay turbulent; above ~10 ft/s erosion starts eating the channel."},
+ "Friction factor f":{sym:"f",
+  d:"Dimensionless resistance of the pipe wall, from the Swamee-Jain fit to the Colebrook equation. Depends on roughness and Reynolds number."},
+ "Total pressure drop":{sym:"Δp",
+  d:"Pressure the pump must supply to push this flow through this circuit — wall friction plus every bend, fitting and baffle turnaround."},
+ "Plate rigidity D":{sym:"D = Et³/12(1−v²)",
+  d:"A plate's flexural stiffness. The plate equivalent of EI for a beam.",
+  n:"Cubic in thickness — deflection is extremely sensitive to how thick the plate is."},
+ "Aspect ratio a/b":{sym:"a/b",
+  d:"Long side over short side. It sets the β and α coefficients, and past about 3 the plate behaves like a one-way strip spanning the short direction.",
+  n:"The short side dominates — a long plate is no weaker than a square one of the same width."},
+ "Max stress":{sym:"σ",
+  d:"Peak stress in the part from this loading, compared against yield to get the safety factor."},
+ "Max moment M":{sym:"M",
+  d:"Largest internal bending moment along the beam. Where it peaks depends on the support conditions.",
+  n:"A cantilever sees four times the moment of a simply supported beam under the same centre load."},
+ "Bending stress":{sym:"σ = M/S",
+  d:"Stress from bending: moment over section modulus. Maximum at the outermost fibre."},
+ "Regime":{d:"Which equation governs — the physics changes, so the formula does too."},
+ "Material":{d:"Sets E for stiffness, Sy for strength. These are typical handbook values; real stock varies with heat, temper and thickness.",
+  r:"Check a mill cert before releasing anything that matters."},
+ "Target safety factor":{d:"The margin the back-solve sizes for. Everything under 'Sized for SF' is the geometry needed to hit exactly this number."},
+ "Deflection limit L/x":{d:"Allowable sag as a fraction of span. Enter the denominator: 240 means L/240.",
+  r:"240 general structure · 360 where finish or fit matters · 180 is loose."},
+};
+Object.assign(G,{
+ "Load case":{d:"How the beam is held and where the load sits. This changes the answer more than any material choice — a cantilever sees four times the moment of a simply supported beam under the same centre load."},
+ "End condition":{d:"How the column's ends are restrained. It sets K, the effective length factor.",
+  r:"Pinned-pinned K=1 · fixed-fixed K=0.5 · fixed-free K=2 (the worst case by far)."},
+ "K value":{d:"Theoretical K assumes perfect end fixity. Real bolted or welded joints are softer, so AISC recommends design values — 0.65 for fixed-fixed, 0.80 for fixed-pinned.",
+  r:"Use the AISC values for anything you're actually building."},
+ "Edge condition":{d:"How the plate is held at its boundary. Clamped edges more than halve the deflection but move peak stress to the edge; simply supported edges peak at the centre."},
+ "Preload, fraction of proof":{d:"How much of the bolt's elastic capacity you use up clamping. Higher preload means a stiffer, more fatigue-resistant joint — but less headroom before yield.",
+  r:"0.75 for reusable joints, 0.90 for permanent ones."},
+ "External tensile load P":{d:"Load per bolt trying to pull the joint apart. From a pressure end cap, a lever arm, or a hand calc.",
+  n:"Only C times this actually reaches the bolt — the rest unloads the clamped faces."},
+ "Shear load V":{d:"Load per bolt acting across the joint rather than along the bolt.",
+  n:"Properly preloaded joints carry shear by friction between the faces, not by the bolt in shear. This check is the conservative fallback."},
+ "Wall roughness e":{d:"Absolute height of surface irregularities inside the channel.",
+  r:"Drilled or commercial steel ~0.0018 in · smooth drawn tube ~0.0001 in."},
+ "Minor-loss K total":{d:"Sum of loss coefficients for everything that isn't straight pipe. In a real cooling circuit these usually dominate the friction losses.",
+  r:"~0.9 per sharp bend · 1.5–2 per baffle turnaround · 0.5–1 per fitting."},
+ "Coolant rise dT":{d:"Temperature the coolant is allowed to gain between inlet and outlet.",
+  n:"A small rise means uniform cooling but demands more flow — the two trade directly.",
+  r:"Molds: 4 °F or less."},
+ "Circuit length":{d:"Total developed length the water actually travels, including every up-and-down baffle pass — not the straight-line distance across the part."},
+ "Pump available":{d:"Pressure your pump delivers at this flow rate, read off its curve. Not the headline maximum — that's at zero flow."},
+ "Pump margin":{d:"What's left after the circuit's losses. Negative means this pump can't sustain this flow.",
+  r:"Keep a couple of psi spare for fouling and added fittings."},
+ "Tightening torque":{d:"What to set the wrench to in order to reach the target preload.",
+  n:"Scatters ±25% or worse because it depends entirely on friction. For a joint that matters, use turn-of-nut or measure bolt stretch directly."},
+ "Bolt force Fb":{d:"Total tension in the bolt: preload plus its share of the external load. This is what gets compared against proof."},
+ "End-cap force":{d:"Total force pressure exerts on a flat cover, trying to blow it off. Divide by the bolt count to size the fasteners."},
+ "Beam weight":{d:"Self-weight of the beam itself. Worth checking against the applied load — if it's a meaningful fraction, it belongs in the load case."},
+ "Critical stress":{d:"Average stress in the column at the moment it buckles. Multiply by area to get the critical load."},
+ "Area A":{d:"Cross-sectional area. Sets axial capacity and, with density, the weight."},
+});
+// aliases — the same idea under a different label in another calculator
+G["Safety factor on yield"]=G["Safety factor"];
+G["Max deflection"]=G["Max deflection"];
+G["Sphere / dished end stress"]=G["Longitudinal stress"];
+G["Tensile load per bolt"]=G["External tensile load P"];
+G["Channel diameter"]=G["Velocity"];
+G["Flow this circuit"]=G["Velocity"];
+G["Viscosity"]={d:"Kinematic viscosity of water at this temperature. It drops sharply as water warms, which raises Reynolds number — hot water is easier to keep turbulent.",
+ r:"0.95 cSt at 70 °F · 0.68 at 100 °F · 0.47 at 140 °F."};
+G["Required total flow"]={sym:"GPM = Q/(500·dT)",
+ d:"Flow needed to carry the heat load at your allowed temperature rise. The 500 is 8.33 lb/gal × 60 min × the specific heat of water.",
+ r:"Molds want the in-to-out rise at 4 °F or less for uniform cooling."};
+G["Heat load Q"]=G["Required total flow"];   // must follow the definition above
+
+// Fail loudly rather than rendering an empty tooltip if an alias ever points at
+// a term that doesn't exist yet.
+for(const [k,g] of Object.entries(G)) if(!g||!g.d) console.warn("glossary: no definition for",k);
+
+function termHtml(label,text){
+  if(!G[label]) return esc(text??label);
+  return `<button type="button" class="term" data-term="${esc(label)}"
+    aria-label="${esc(label)} — what is this?">${esc(text??label)}</button>`;
+}
+// A label element already owns its input, so a nested button would fight it for
+// the click. Sit the affordance outside the label text instead.
+function info(label){
+  if(!G[label]) return "";
+  return ` <button type="button" class="infobtn term" data-term="${esc(label)}"
+    aria-label="What is ${esc(label)}?">?</button>`;
+}
+
+let tipEl=null;
+function hideTip(){ tipEl?.remove(); tipEl=null; }
+function showTip(btn){
+  const g=G[btn.dataset.term]; if(!g) return;
+  hideTip();
+  tipEl=document.createElement("div");
+  tipEl.className="tip"; tipEl.setAttribute("role","tooltip");
+  tipEl.innerHTML=`<h4>${esc(btn.dataset.term)}${g.sym?`<span class="sym">${esc(g.sym)}</span>`:""}</h4>
+    <p>${esc(g.d)}</p>${g.svg||""}${g.n?`<p>${esc(g.n)}</p>`:""}
+    ${g.r?`<p class="rule">${esc(g.r)}</p>`:""}`;
+  document.body.appendChild(tipEl);
+  const b=btn.getBoundingClientRect(), t=tipEl.getBoundingClientRect();
+  let left=Math.min(Math.max(8,b.left),innerWidth-t.width-8);
+  let top=b.bottom+8;
+  if(top+t.height>innerHeight-8) top=Math.max(8,b.top-t.height-8);
+  tipEl.style.left=left+"px"; tipEl.style.top=top+"px";
+}
+document.addEventListener("pointerover",e=>{
+  const b=e.target.closest?.(".term"); if(b) showTip(b);
+});
+document.addEventListener("pointerout",e=>{
+  const b=e.target.closest?.(".term");
+  if(b&&!e.relatedTarget?.closest?.(".tip")) hideTip();
+});
+document.addEventListener("focusin",e=>{
+  const b=e.target.closest?.(".term"); if(b) showTip(b);
+});
+document.addEventListener("click",e=>{
+  const b=e.target.closest?.(".term");
+  if(b){ e.preventDefault(); tipEl?showTip(b):showTip(b); return; }  // tap on touch
+  if(!e.target.closest?.(".tip")) hideTip();
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") hideTip(); });
+document.addEventListener("scroll",hideTip,true);
+
 /* ---- Start: route a plain-English description to a calculator -------------
    Rule-based on purpose. A published page cannot call a language model, and for
    a domain this narrow it doesn't need one — the vocabulary is small and the
@@ -1494,11 +1783,11 @@ function render(){
   $("#inputs").innerHTML=`<fieldset class="group"><p class="grouptitle">Inputs</p>${
    visible(current).map(f=>{
     const val=v[f.k];
-    if(f.t==="select") return `<div class="field wide"><label for="i-${f.k}">${f.l}</label>
+    if(f.t==="select") return `<div class="field wide"><label for="i-${f.k}">${f.l}${info(f.l)}</label>
       <select id="i-${f.k}" data-k="${f.k}">${f.o.map(([ov,ol])=>
         `<option value="${ov}"${String(ov)===String(val)?" selected":""}>${ol}</option>`).join("")}</select></div>`;
     const [dv,du]=conv(val,f.u);
-    return `<div class="field"><label for="i-${f.k}">${f.l}${f.u?` <span class="u">${du||f.u}</span>`:""}</label>
+    return `<div class="field"><label for="i-${f.k}">${f.l}${info(f.l)}${f.u?` <span class="u">${du||f.u}</span>`:""}</label>
       <input id="i-${f.k}" data-k="${f.k}" data-unit="${f.u||""}" type="number" step="any" value="${
         typeof dv==="number"?+dv.toFixed(6):dv}"></div>${sliderFor(f)}`;
    }).join("")}</fieldset>`;
@@ -1515,11 +1804,11 @@ function render(){
     <div class="gscale"><span>0</span><span>1.0</span><span>1.5</span><span>3.0+</span></div></div>`;
 
   const row=([l,val,u])=>{const [cv,cu]=conv(val,u);
-    return `<tr><td>${l}</td><td class="num">${fmt(cv)}${cu?`<span class="unit">${cu}</span>`:""}</td></tr>`;};
+    return `<tr><td>${termHtml(l)}</td><td class="num">${fmt(cv)}${cu?`<span class="unit">${cu}</span>`:""}</td></tr>`;};
 
   $("#results").innerHTML=`
    ${sf!==null?`<div class="verdict"><div class="vtop">
-     <div class="sfblock"><div class="sflabel">Safety factor</div>
+     <div class="sfblock"><div class="sflabel">${termHtml("Safety factor")}</div>
        <div class="sfval" style="color:var(--${cls(sf)})">${sf==null?"—":sf.toFixed(2)}</div>
        <span class="chip ${cls(sf)}">${word(sf)}</span></div>
      ${gauge}</div></div>`:""}

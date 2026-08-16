@@ -976,6 +976,197 @@ function renderDiagram(){
    ${curveSvg()}`;
 }
 
+/* ---- Start: route a plain-English description to a calculator -------------
+   Rule-based on purpose. A published page cannot call a language model, and for
+   a domain this narrow it doesn't need one — the vocabulary is small and the
+   quantities are regular. What matters is that it NEVER silently guesses: it
+   shows what it understood and lets you fix it before anything loads.        */
+
+const ROUTE=[
+ ["beams",   ["beam","bracket","cantilever","overhang","span","sag","deflect","arm","rail",
+              "crossmember","shelf","support arm","mount","bends","bending"]],
+ ["columns", ["column","strut","post","buckle","buckling","leg","pillar","jack stand",
+              "compression member","upright"]],
+ ["shafts",  ["shaft","axle","spindle","drive","torque","rpm","horsepower","twist","motor",
+              "gearbox","pulley shaft"]],
+ ["bolts",   ["bolt","screw","fastener","preload","clamp","joint","thread","socket head",
+              "cap screw","torque spec","stud"]],
+ ["plates",  ["plate","cover","panel","lid","diaphragm","flat plate","bulkhead"]],
+ ["pressure",["vessel","cylinder","tank","hoop","burst","pressurized","accumulator",
+              "pipe wall","reservoir"]],
+ ["cooling", ["cool","coolant","water line","channel","flow","gpm","heat load","btu",
+              "turbulent","reynolds","mold cooling","radiator","circuit"]],
+ ["sections",["section","moment of inertia","cross-section","area moment","tube size"]],
+];
+
+const MATHINT=[
+ [/\b(6061|aluminium|aluminum|alu\b)/i,"Al 6061-T6"],[/\b7075\b/i,"Al 7075-T6"],
+ [/\b4140\b/i,"Steel 4140 (Q&T 28HRC)"],[/\b1018\b/i,"Steel 1018 (CR)"],
+ [/\b(a36|mild steel|hot rolled)\b/i,"Steel A36 (HR)"],
+ [/\bp20\b/i,"Tool steel P20 (30HRC)"],[/\bh13\b/i,"Tool steel H13 (45HRC)"],
+ [/\b(17-?4)\b/i,"SS 17-4 PH (H900)"],[/\b(304|stainless)\b/i,"SS 304 (annealed)"],
+ [/\bbrass\b/i,"Brass C360 (1/2 hard)"],[/\bcopper\b/i,"Copper C110"],
+ [/\b(titanium|ti-?6)\b/i,"Ti-6Al-4V"],[/\bpeek\b/i,"PEEK"],
+ [/\b(delrin|acetal)\b/i,"Acetal (Delrin)"],[/\bnylon\b/i,"Nylon 6/6 (dry)"],
+ [/\b(polycarb|lexan)\b/i,"Polycarbonate"],[/\babs\b/i,"ABS (molded)"],[/\bsteel\b/i,"Steel A36 (HR)"],
+];
+
+// number, optionally a fraction, then a unit
+const NUMU=/(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s*(in\b|inch(?:es)?\b|"|mm\b|ft\b|feet\b|lbf?\b|lbs\b|pounds?\b|psi\b|rpm\b|hp\b|btu\/?h?r?\b|gpm\b|deg\b|°)/gi;
+function toNum(s){
+  s=s.trim();
+  if(/^\d+\s+\d+\/\d+$/.test(s)){const[a,b]=s.split(/\s+/);const[n,d]=b.split("/");return +a+ +n/+d;}
+  if(/^\d+\/\d+$/.test(s)){const[n,d]=s.split("/");return +n/+d;}
+  return parseFloat(s);
+}
+const CTX=[
+ [/\b(long|length|span|spans?|between supports)\b/i,"L"],
+ [/\b(thick|thickness|wall)\b/i,"t"],
+ [/\b(diameter|dia\b|bore|od\b|i\.?d\.?\b|across|round|rod)\b/i,"d"],
+ [/\b(wide|width)\b/i,"b"],
+ [/\b(tall|height|high|deep|depth)\b/i,"h"],
+ [/\b(load|force|weight|holds?|carr(?:y|ies)|pulls?|hangs?|push(?:es)?)\b/i,"P"],
+ [/\b(pressure|psi)\b/i,"q"],
+];
+
+function parseQuery(text){
+  const t=" "+text.toLowerCase()+" ";
+  // route
+  const score={};
+  for(const [k,words] of ROUTE){ score[k]=0;
+    for(const w of words) if(t.includes(w)) score[k]+=w.includes(" ")?3:2; }
+  if(/\bpsi\b/.test(t)&&score.pressure!==undefined) score.pressure+=1;
+  if(/\b(gpm|btu)\b/.test(t)) score.cooling+=2;
+  if(/\b(rpm|hp|horsepower)\b/.test(t)) score.shafts+=2;
+  if(/\b\d+\/\d+-\d+\b/.test(t)) score.bolts+=4;   // a thread designation
+  const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
+  const [calc,top]=ranked[0];
+  const confident = top>0 && (ranked.length<2 || top>ranked[1][1]);
+  if(!top) return {calc:null,alts:ROUTE.map(r=>r[0]),values:{},read:[]};
+
+  const v={}, read=[];
+  const push=(k,val,unit,why)=>{ if(v[k]===undefined){ v[k]=val; read.push([k,val,unit,why]); } };
+
+  // material
+  for(const [re,name] of MATHINT) if(re.test(text)){ push("material",name,"","named"); break; }
+
+  // thread designation
+  const th=text.match(/\b(#?\d+(?:\/\d+)?)-(\d+)\b/);
+  if(th){ const key=`${th[1]}-${th[2]}`; if(THREADS[key]) push("thread",key,"","thread called out"); }
+
+  // quantities with units, tagged by the words immediately around them
+  let m;
+  NUMU.lastIndex=0;
+  while((m=NUMU.exec(text))!==null){
+    let n=toNum(m[1]); const u=m[2].toLowerCase();
+    // Clip each window at the neighbouring quantity. Without this, "4 in ID with
+    // 0.12 in wall" reads the 4 as a thickness, and "6 in across under 150 psi"
+    // reads the 6 as a pressure — each stealing the next number's noun.
+    const before=text.slice(Math.max(0,m.index-30),m.index).replace(/^[\s\S]*\d/,"");
+    const after=text.slice(m.index+m[0].length,m.index+m[0].length+26).split(/\d/)[0];
+    const near=before+" "+after;
+    if(/^mm$/.test(u)) n/=25.4;
+    if(/^(ft|feet)$/.test(u)) n*= (calc==="cooling"?1:12);
+
+    if(/^(psi)$/.test(u)){ push(calc==="plates"?"q":"P",n,"psi","pressure"); continue; }
+    if(/^rpm$/.test(u)){ push("rpm",n,"RPM","speed"); continue; }
+    if(/^hp$/.test(u)){ push("hp",n,"HP","power"); continue; }
+    if(/^gpm$/.test(u)){ push("gpm",n,"GPM","flow"); continue; }
+    if(/^btu/.test(u)){ push("Q",n,"BTU/hr","heat load"); continue; }
+    if(/^(lbf?|lbs|pounds?)$/.test(u)){
+      push(calc==="bolts"||calc==="columns"?"P":"P",n,"lbf","load"); continue; }
+    if(/^(in|inch|inches|"|ft|feet|mm)$/.test(u)){
+      let key=null;
+      for(const [re,k] of CTX) if(re.test(near)){ key=k; break; }
+      if(!key) key = calc==="cooling"?"d":calc==="pressure"?"ID":calc==="plates"?"a":"L";
+      if(calc==="cooling"&&/^(ft|feet)$/.test(u)) key="len";
+      if(calc==="pressure"&&key==="d") key="ID";
+      if(calc==="plates"&&key==="d") key="a";
+      push(key,n,"in",/\b(long|length|span)\b/i.test(near)?"length":"dimension");
+    }
+  }
+
+  // beam load case from how it's described
+  if(calc==="beams"){
+    const uni=/\b(uniform|distributed|spread|along|per inch|udl)\b/i.test(text);
+    let c="ss_point";
+    if(/\b(cantilever|one end|overhang|bracket|sticks? out|free end|hangs? off)\b/i.test(text)) c=uni?"cant_uniform":"cant_point";
+    else if(/\b(both ends fixed|fixed[- ]fixed|welded both|built[- ]in both)\b/i.test(text)) c=uni?"fixed_uniform":"fixed_point";
+    else c=uni?"ss_uniform":"ss_point";
+    v.case=c; read.push(["case",BEAM_CASES[c][0],"","how it's supported"]);
+    if(uni&&v.P!==undefined){ v.w=v.P; delete v.P;
+      const i=read.findIndex(r=>r[0]==="P"); if(i>=0) read[i]=["w",v.w,"lbf/in","distributed load"]; }
+  }
+  if(calc==="columns"&&/\b(one end free|flag ?pole|cantilever|free at the top)\b/i.test(text)) v.end="ff";
+  if(calc==="plates"&&/\b(clamped|bolted all round|welded all round|fixed edge)\b/i.test(text)) v.edge="clamped";
+  if(calc==="plates"&&/\b(rectangular|square|panel)\b/i.test(text)) v.kind="rect";
+  if(v.kind==="rect"&&v.a!==undefined){ v.la=v.a; delete v.a;
+    const i=read.findIndex(r=>r[0]==="a"); if(i>=0) read[i]=["la",v.la,"in","long side"]; }
+  if(calc==="sections"||calc==="beams"||calc==="columns"){
+    if(v.d!==undefined) v.shape="round";
+    else if(v.b!==undefined&&v.h!==undefined) v.shape="rectangle";
+  }
+  return {calc,confident,values:v,read,alts:ranked.filter(r=>r[1]>0).slice(1,4).map(r=>r[0])};
+}
+
+let startText="", parsed=null;
+function renderStart(){
+  $("#ctitle").textContent="Start here";
+  $("#cdesc").textContent="Describe what you're sizing in plain language. Everything it picks up is shown before anything loads — correct it if it read you wrong.";
+  $("#inputs").innerHTML=""; $("#diagram").style.display="none";
+  const p=parsed;
+  $("#results").innerHTML=`
+   <div class="group">
+     <p class="grouptitle">What are you working on?</p>
+     <textarea id="q" class="enote" rows="3" style="min-height:74px"
+       placeholder="A 6061 bracket, 8 in long, sticking off a plate, holding 200 lb at the free end">${esc(startText)}</textarea>
+     <div class="actions" style="margin-top:10px">
+       <button class="btn primary" id="qgo">Work out what to use</button>
+       ${startText?'<button class="btn" id="qclear">Clear</button>':""}
+     </div>
+   </div>
+   ${p?(p.calc?`
+   <div class="group">
+     <p class="grouptitle">What it read</p>
+     <div class="ehead"><span class="ecalc">${CALCS[p.calc].title}</span>
+       <span class="chip ${p.confident?"ok":"warn"}">${p.confident?"clear match":"best guess"}</span></div>
+     ${p.read.length?`<div class="tablewrap"><table><thead><tr><th>Field</th><th>Value</th></tr></thead>
+       <tbody>${p.read.map(([k,val,u,why])=>{
+         const f=CALCS[p.calc].fields.find(x=>x.k===k);
+         return `<tr><td>${f?f.l:k}<span class="unit">${why}</span></td>
+           <td class="num">${typeof val==="number"?fmt(val):esc(val)}<span class="unit">${u}</span></td></tr>`;
+       }).join("")}</tbody></table></div>`
+      :`<p class="dgcap" style="border:0;padding:0;margin:0">No numbers found — it will open with the defaults.</p>`}
+     <div class="actions">
+       <button class="btn primary" id="qopen">Open in ${CALCS[p.calc].label}</button>
+       ${p.alts.map(a=>`<button class="btn sm" data-alt="${a}">${CALCS[a].label} instead</button>`).join("")}
+     </div>
+   </div>`:`<div class="empty">Couldn't tell which calculator that needs.<br>
+     Try naming the part and what it does — "bracket holding 200 lb", "cover plate under 150 psi",
+     "3/8-16 bolt clamping a joint".</div>`):""}
+   <div class="group">
+     <p class="grouptitle">Or start from the part</p>
+     <div class="actions">${Object.entries(CALCS).map(([k,c])=>
+       `<button class="btn sm" data-alt="${k}">${c.label}</button>`).join("")}</div>
+   </div>`;
+
+  const go=()=>{ startText=$("#q").value; parsed=startText.trim()?parseQuery(startText):null; render(); };
+  $("#qgo").onclick=go;
+  $("#q").onkeydown=e=>{ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)) go(); };
+  if($("#qclear")) $("#qclear").onclick=()=>{startText="";parsed=null;render();};
+  if($("#qopen")) $("#qopen").onclick=()=>{
+    state[p.calc]={...defaults(p.calc),...p.values};
+    current=p.calc; sweepKey=null; buildNav(); render();
+  };
+  $("#results").onclick=e=>{
+    const a=e.target.closest("[data-alt]"); if(!a) return;
+    const k=a.dataset.alt;
+    if(p&&p.values) state[k]={...defaults(k),...Object.fromEntries(
+      Object.entries(p.values).filter(([kk])=>CALCS[k].fields.some(f=>f.k===kk)))};
+    current=k; sweepKey=null; buildNav(); render();
+  };
+}
+
 /* ---- Findings -------------------------------------------------------------
    What is worth pointing out about a result. Deliberately rule-based, not a
    language model: "interesting" in sizing work has exact definitions — a margin
@@ -1153,7 +1344,13 @@ function renderProject(){
      <span class="espacer"></span>
      <button class="btn sm" id="pcopy">Copy all as markdown</button>
      <button class="btn sm" id="pdl">Save .md file</button>
+     <button class="btn sm" id="pnotion">Send to Notion</button>
      <button class="btn sm danger" id="pdel">Delete project</button>
+   </div>
+   <div class="group" style="margin-bottom:12px">
+     <p class="grouptitle">Notion parent page</p>
+     <div class="field wide"><label for="np">Paste a Notion page URL. New pages land inside it; leave it empty and they're created as private workspace pages.</label>
+       <input id="np" type="text" placeholder="https://notion.so/…" value="${esc(notionParent())}"></div>
    </div>
    ${p.entries.length?p.entries.map(e=>{
      const c=CALCS[e.calc];
@@ -1187,6 +1384,8 @@ function renderProject(){
     .then(()=>toast("Project copied — paste it into a Claude project"))
     .catch(()=>toast("Copy failed"));
   $("#pdl").onclick=downloadProject;
+  $("#pnotion").onclick=e=>sendToNotion(p.name,projectMarkdown(),e.target);
+  $("#np").oninput=e=>setNotionParent(e.target.value.trim());
 
   for(const t of document.querySelectorAll(".enote")){
     autoGrow(t);
@@ -1202,6 +1401,42 @@ function renderProject(){
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function autoGrow(t){t.style.height="auto";t.style.height=Math.max(38,t.scrollHeight)+"px";}
 
+/* ---- Notion ---------------------------------------------------------------
+   Request and response shapes were observed against the real connector, not
+   guessed: create-pages takes {parent:{type:"page_id",page_id}, pages:[{
+   properties:{title}, icon, content}]} and returns {pages:[{id,url,...}]}.
+   The parent page is entered by the user and kept in localStorage — no page id
+   from anyone's workspace is baked into this file.                           */
+
+const NOTION_SERVER="claude_ai_Notion";
+const notionParent=()=>{ try{return localStorage.getItem("napkin.notionParent")||"";}catch(_){return "";} };
+function setNotionParent(v){ try{localStorage.setItem("napkin.notionParent",v);}catch(_){} }
+const pageIdFrom=s=>{
+  const m=String(s).match(/([0-9a-f]{32})|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  return m?m[0]:"";
+};
+
+async function sendToNotion(title,markdown,btn){
+  const mcp=await (window.claude?.use?.("mcp")??null);
+  if(!mcp){ toast("Notion isn't available in this view — use Copy instead"); return; }
+  const parent=pageIdFrom(notionParent());
+  if(btn){ btn.disabled=true; btn.textContent="Sending…"; }
+  try{
+    const res=await mcp.callTool(NOTION_SERVER,"notion-create-pages",{
+      ...(parent?{parent:{type:"page_id",page_id:parent}}:{}),
+      pages:[{properties:{title},icon:"📐",content:markdown}],
+    });
+    const url=res?.payload?.pages?.[0]?.url;
+    toast(url?"Sent to Notion":"Sent");
+    if(url) window.open(url,"_blank","noopener");
+  }catch(err){
+    const c=err&&err.code;
+    if(c==="tool_error") toast("Notion rejected it — check the parent page is one you can edit");
+    else if(c==="declined"||c==="not_granted") toast("Notion access wasn't granted");
+    else toast("Couldn't reach Notion — the markdown is still yours to copy");
+  }finally{ if(btn){ btn.disabled=false; btn.textContent="Send to Notion"; } }
+}
+
 async function downloadProject(){
   const dl=await (window.claude?.use?.("downloads")??null);
   if(!dl){ toast("File saving isn't available here — use Copy instead"); return; }
@@ -1215,7 +1450,7 @@ async function downloadProject(){
   }
 }
 
-let current="beams", state={};
+let current="__start", state={};
 const $=s=>document.querySelector(s);
 
 function defaults(calc){
@@ -1227,7 +1462,9 @@ function visible(calc){
 
 function buildNav(){
   const n=proj()?proj().entries.length:0;
-  $("#nav").innerHTML=Object.entries(CALCS).map(([k,c])=>
+  $("#nav").innerHTML=`<li><button data-c="__start" ${current==="__start"?'aria-current="true"':""}>Start
+     <span class="op">↦</span></button></li><li><div class="navsep"></div></li>`
+   +Object.entries(CALCS).map(([k,c])=>
    `<li><button data-c="${k}" ${k===current?'aria-current="true"':""}>${c.label}<span class="op">${c.op}</span></button></li>`).join("")
    +`<li><div class="navsep"></div></li>
      <li><button data-c="__project" ${current==="__project"?'aria-current="true"':""}>Project
@@ -1238,6 +1475,7 @@ function buildNav(){
 }
 
 function render(){
+  if(current==="__start"){ renderStart(); return; }
   if(current==="__project"){ renderProject(); return; }
   const c=CALCS[current], v=state[current];
   $("#ctitle").textContent=c.title; $("#cdesc").textContent=c.desc;
@@ -1375,6 +1613,7 @@ function openPreview(){
           previewLevel==="full"?"Every intermediate, the back-solve, and the assumptions.":
           "Full work plus the framing a model needs to write prose about it without inventing anything."}</span>
         <button class="btn" data-x="close">Close</button>
+        <button class="btn" data-x="notion">Send to Notion</button>
         <button class="btn primary" data-x="copy">Copy</button>
       </div></div>`;
   };
@@ -1387,6 +1626,8 @@ function openPreview(){
       navigator.clipboard.writeText(exportMd(previewLevel))
         .then(()=>{toast("Copied");scrim.remove();document.removeEventListener("keydown",esckey);})
         .catch(()=>toast("Copy failed"));
+    if(e.target.dataset.x==="notion")
+      sendToNotion(CALCS[current].title,exportMd(previewLevel),e.target);
   };
   const esckey=e=>{if(e.key==="Escape"){scrim.remove();document.removeEventListener("keydown",esckey);}};
   document.addEventListener("keydown",esckey);

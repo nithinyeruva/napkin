@@ -37,7 +37,7 @@ body{
   font-family:var(--ui); font-size:15px; line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1180px;margin:0 auto;padding:0 20px 64px}
+.wrap{max-width:1440px;margin:0 auto;padding:0 20px 64px}
 
 header{
   display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
@@ -80,7 +80,44 @@ main{padding:22px 0 0 28px;min-width:0}
 .calchead h2{font-size:19px;margin:0 0 3px;letter-spacing:-.01em;font-weight:620}
 .calchead p{margin:0;font-size:13px;color:var(--ink-2);max-width:62ch}
 
-.cols{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:26px;align-items:start}
+.cols{display:grid;grid-template-columns:minmax(0,272px) minmax(0,360px) minmax(0,1fr);gap:22px;align-items:start}
+
+/* Diagram — schematic, with the dimensions you can type into sitting on it */
+.diagram{
+  background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:14px 15px 12px;position:sticky;top:14px;
+}
+.dgwrap{position:relative;width:100%}
+.dgwrap svg{display:block;width:100%;height:auto}
+.dg-line{stroke:var(--ink);stroke-width:2;fill:none;stroke-linecap:round}
+.dg-thin{stroke:var(--ink-3);stroke-width:1;fill:none}
+.dg-dim{stroke:var(--dye);stroke-width:1;fill:none}
+.dg-load{stroke:var(--dye);stroke-width:1.6;fill:none;stroke-linecap:round}
+.dg-fill{fill:var(--dye-soft);stroke:var(--dye);stroke-width:1.5}
+.dg-body{fill:var(--sunk);stroke:var(--ink);stroke-width:1.5}
+.dg-defl{stroke:var(--warn);stroke-width:1.6;fill:none;stroke-dasharray:4 3}
+.dg-hatch{stroke:var(--ink-3);stroke-width:1}
+.dg-txt{fill:var(--ink-2);font-family:var(--mono);font-size:10px}
+.dg-key{fill:var(--dye);font-family:var(--mono);font-size:10px;font-weight:600}
+.dgfield{
+  position:absolute;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:3px;
+  background:var(--card);border:1px solid var(--rule-2);border-radius:5px;
+  padding:1px 3px 1px 5px;box-shadow:0 1px 3px rgba(0,0,0,.07);
+}
+.dgfield span{font-family:var(--mono);font-size:10px;color:var(--dye);font-weight:600}
+.dgfield input{
+  width:52px;padding:1px 3px;border:0;background:transparent;
+  font-family:var(--mono);font-size:11px;text-align:right;color:var(--ink);
+}
+.dgfield input:focus{outline:1.5px solid var(--dye);outline-offset:1px;border-radius:3px}
+.dgcap{
+  font-size:11px;color:var(--ink-3);margin:9px 0 0;line-height:1.4;
+  padding-top:9px;border-top:1px solid var(--rule);
+}
+.dglegend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--ink-3);margin-top:7px}
+.dglegend i{display:inline-block;width:14px;height:0;border-top:2px dashed var(--warn);
+  vertical-align:middle;margin-right:4px}
 
 fieldset{border:0;margin:0;padding:0}
 .group{
@@ -179,8 +216,15 @@ footer{
 }
 .selfcheck{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:5px}
 
+@media (max-width:1160px){
+  .cols{grid-template-columns:minmax(0,272px) minmax(0,1fr)}
+  .diagram{position:static;grid-column:2}
+  #results{grid-column:1/-1}
+}
 @media (max-width:820px){
   .layout{grid-template-columns:1fr}
+  .cols{grid-template-columns:1fr}
+  .diagram{grid-column:1}
   nav{
     border-right:0;border-bottom:1px solid var(--rule);position:static;
     padding:12px 0;
@@ -218,6 +262,7 @@ footer{
     </div>
     <div class="cols">
       <form id="inputs" autocomplete="off"></form>
+      <aside class="diagram" id="diagram"></aside>
       <section id="results" aria-live="polite"></section>
     </div>
   </main>
@@ -572,6 +617,244 @@ function fmt(x){
 const cls=sf=>sf==null?"none":sf<1?"fail":sf<1.5?"warn":"ok";
 const word=sf=>sf==null?"—":sf<1?"FAIL":sf<1.5?"MARGINAL":"OK";
 
+/* ---- Diagrams -------------------------------------------------------------
+   Schematic, not to scale, except Sections which draws true proportions.
+   Each returns { svg, fields, caption }. `fields` are inputs positioned over
+   the drawing in percent coordinates, so a dimension can be typed where you
+   are looking at it.                                                        */
+
+const VB='viewBox="0 0 320 190" xmlns="http://www.w3.org/2000/svg"';
+const arrowDown=(x,y1,y2)=>
+ `<path class="dg-load" d="M${x},${y1} L${x},${y2} M${x-3.5},${y2-5} L${x},${y2} L${x+3.5},${y2-5}"/>`;
+const arrowUp=(x,y1,y2)=>
+ `<path class="dg-load" d="M${x},${y1} L${x},${y2} M${x-3.5},${y2+5} L${x},${y2} L${x+3.5},${y2+5}"/>`;
+const dimLine=(x1,x2,y)=>
+ `<path class="dg-dim" d="M${x1},${y-5} L${x1},${y+5} M${x2},${y-5} L${x2},${y+5} M${x1},${y} L${x2},${y}"/>
+  <path class="dg-dim" d="M${x1+6},${y-3} L${x1},${y} L${x1+6},${y+3}"/>
+  <path class="dg-dim" d="M${x2-6},${y-3} L${x2},${y} L${x2-6},${y+3}"/>`;
+const hatch=(x,y1,y2,dir)=>{let p="";for(let y=y1;y<y2;y+=7)
+  p+=`<path class="dg-hatch" d="M${x},${y} L${x+dir*7},${y+7}"/>`;
+  return `<path class="dg-line" d="M${x},${y1} L${x},${y2}"/>${p}`;};
+const pinSup=x=>`<path class="dg-fill" d="M${x},82 L${x-9},98 L${x+9},98 Z"/>
+  <path class="dg-hatch" d="M${x-13},98 L${x+13},98"/>`;
+const rollSup=x=>`<path class="dg-fill" d="M${x},82 L${x-9},94 L${x+9},94 Z"/>
+  <circle class="dg-fill" cx="${x-5}" cy="97" r="3"/><circle class="dg-fill" cx="${x+5}" cy="97" r="3"/>
+  <path class="dg-hatch" d="M${x-13},101 L${x+13},101"/>`;
+
+const BEAM_DG={
+ ss_point:{sup:x=>pinSup(45)+rollSup(275),defl:"M45,80 C110,110 210,110 275,80"},
+ ss_uniform:{sup:x=>pinSup(45)+rollSup(275),defl:"M45,80 C105,112 215,112 275,80"},
+ cant_point:{sup:()=>hatch(45,52,112,-1),defl:"M45,80 C120,80 200,96 275,112"},
+ cant_uniform:{sup:()=>hatch(45,52,112,-1),defl:"M45,80 C120,80 205,94 275,106"},
+ fixed_point:{sup:()=>hatch(45,52,112,-1)+hatch(275,52,112,1),
+   defl:"M45,80 C95,80 108,102 160,102 C212,102 225,80 275,80"},
+ fixed_uniform:{sup:()=>hatch(45,52,112,-1)+hatch(275,52,112,1),
+   defl:"M45,80 C95,80 108,100 160,100 C212,100 225,80 275,80"},
+};
+
+const DIAGRAMS={
+ beams(v){
+  const C=BEAM_DG[v.case], pt=v.case.includes("point"), cant=v.case.startsWith("cant");
+  let load="";
+  if(pt){ const x=cant?275:160; load=arrowDown(x,40,74); }
+  else { load='<path class="dg-load" d="M45,44 L275,44"/>';
+    for(let x=45;x<=275;x+=(275-45)/8) load+=arrowDown(x,46,74); }
+  const svg=`<svg ${VB}>
+   ${C.sup()}
+   <path class="dg-defl" d="${C.defl}"/>
+   <path class="dg-line" d="M45,80 L275,80"/>
+   ${load}
+   ${dimLine(45,275,150)}
+   <text class="dg-txt" x="160" y="176" text-anchor="middle">${
+     cant?"fixed at left, free at right":v.case.startsWith("ss")?"simply supported":"fixed both ends"}</text>
+  </svg>`;
+  const f=[{k:"L",label:"L",x:50,y:79}];
+  f.push(pt?{k:"P",label:"P",x:cant?86:50,y:14}:{k:"w",label:"w",x:50,y:14});
+  return {svg,fields:f,caption:"Dashed line is the deflected shape, exaggerated."};
+ },
+
+ sections(v){
+  // true proportions, scaled to fit
+  const cx=160,cy=88,box=104;
+  let shape="",dims=[];
+  if(v.shape==="rectangle"){
+   const k=box/Math.max(v.b,v.h,1e-9), w=v.b*k, h=v.h*k;
+   shape=`<rect class="dg-body" x="${cx-w/2}" y="${cy-h/2}" width="${w}" height="${h}"/>`
+    +dimLine(cx-w/2,cx+w/2,cy+h/2+22)
+    +`<path class="dg-dim" d="M${cx+w/2+22},${cy-h/2} L${cx+w/2+22},${cy+h/2}"/>`;
+   dims=[{k:"b",label:"b",x:50,y:(cy+h/2+22)/190*100},{k:"h",label:"h",x:(cx+w/2+22)/320*100,y:46}];
+  } else if(v.shape==="round"){
+   const r=box/2;
+   shape=`<circle class="dg-body" cx="${cx}" cy="${cy}" r="${r}"/>`+dimLine(cx-r,cx+r,cy+r+22);
+   dims=[{k:"d",label:"d",x:50,y:(cy+r+22)/190*100}];
+  } else if(v.shape==="tube"){
+   const R=box/2, ri=R*Math.min(v.id/Math.max(v.od,1e-9),.97);
+   shape=`<circle class="dg-body" cx="${cx}" cy="${cy}" r="${R}"/>
+     <circle cx="${cx}" cy="${cy}" r="${ri}" fill="var(--card)" stroke="var(--ink)" stroke-width="1.5"/>`
+     +dimLine(cx-R,cx+R,cy+R+22);
+   dims=[{k:"od",label:"OD",x:50,y:(cy+R+22)/190*100},{k:"id",label:"ID",x:50,y:46}];
+  } else {
+   const k=box/Math.max(v.H,v.B,1e-9),H=v.H*k,B=v.B*k,tf=v.tf*k,tw=v.tw*k;
+   const x0=cx-B/2,y0=cy-H/2;
+   shape=`<path class="dg-body" d="M${x0},${y0} h${B} v${tf} h${-(B-tw)/2} v${H-2*tf}
+     h${(B-tw)/2} v${tf} h${-B} v${-tf} h${(B-tw)/2} v${-(H-2*tf)} h${-(B-tw)/2} Z"/>`
+     +dimLine(x0,x0+B,cy+H/2+22);
+   dims=[{k:"B",label:"B",x:50,y:(cy+H/2+22)/190*100},{k:"H",label:"H",x:82,y:46}];
+  }
+  return {svg:`<svg ${VB}>${shape}</svg>`,fields:dims,
+   caption:"Drawn to true proportions. Bending axis is horizontal."};
+ },
+
+ columns(v){
+  const buck=v.end==="ff"?"M160,150 C160,110 185,95 190,45":
+             v.end==="pp"?"M160,150 C190,110 190,85 160,45":
+             v.end==="fp"?"M160,150 C160,115 188,95 160,45":
+                          "M160,150 C182,120 138,80 160,45";
+  const base=v.end==="ff"?hatch(146,150,176,1).replace(/M146,150/,"M146,150"):
+    `<path class="dg-hatch" d="M144,150 L176,150"/>`+
+    [0,1,2,3].map(i=>`<path class="dg-hatch" d="M${146+i*8},150 L${140+i*8},158"/>`).join("");
+  const topSym=(v.end==="fx"||v.end==="fp")
+    ? `<path class="dg-line" d="M144,45 L176,45"/>`
+    : `<circle class="dg-fill" cx="160" cy="45" r="4"/>`;
+  return {svg:`<svg ${VB}>
+    <path class="dg-defl" d="${buck}"/>
+    <path class="dg-line" d="M160,45 L160,150"/>
+    ${topSym}${base}
+    ${arrowDown(160,12,40)}
+    <path class="dg-dim" d="M112,45 L112,150 M107,45 L117,45 M107,150 L117,150"/>
+    <text class="dg-txt" x="160" y="176" text-anchor="middle">buckles about the weak axis</text>
+   </svg>`,
+   fields:[{k:"P",label:"P",x:50,y:8},{k:"L",label:"L",x:26,y:51}],
+   caption:"Dashed line is the buckled mode for these end conditions."};
+ },
+
+ shafts(v){
+  return {svg:`<svg ${VB}>
+    <rect class="dg-body" x="60" y="66" width="200" height="30" rx="2"/>
+    <path class="dg-thin" d="M60,81 L260,81" stroke-dasharray="6 3"/>
+    <path class="dg-load" d="M72,52 A22,16 0 0 1 108,52"/>
+    <path class="dg-load" d="M108,52 l-6,-4 M108,52 l-1,-7"/>
+    <path class="dg-load" d="M212,52 A22,16 0 0 1 248,52"/>
+    <path class="dg-load" d="M212,52 l6,-4 M212,52 l1,-7"/>
+    ${arrowDown(160,30,62)}
+    <path class="dg-dim" d="M278,66 L278,96 M273,66 L283,66 M273,96 L283,96"/>
+    ${dimLine(60,260,128)}
+    <text class="dg-key" x="90" y="44" text-anchor="middle">T</text>
+    <text class="dg-key" x="230" y="44" text-anchor="middle">T</text>
+    <text class="dg-txt" x="160" y="164" text-anchor="middle">combined torsion + bending</text>
+   </svg>`,
+   fields:[{k:"M",label:"M",x:50,y:12},{k:"d",label:"d",x:88,y:43},{k:"L",label:"L",x:50,y:67}],
+   caption:"Torque at both ends, bending moment at mid-span."};
+ },
+
+ bolts(v){
+  return {svg:`<svg ${VB}>
+    <rect class="dg-body" x="86" y="72" width="148" height="20"/>
+    <rect class="dg-body" x="86" y="92" width="148" height="20"/>
+    <rect class="dg-fill" x="150" y="56" width="20" height="10"/>
+    <rect class="dg-fill" x="154" y="66" width="12" height="52"/>
+    <rect class="dg-fill" x="150" y="118" width="20" height="10"/>
+    <path class="dg-thin" d="M86,92 L234,92"/>
+    ${arrowUp(112,64,34)}${arrowUp(208,64,34)}
+    ${arrowDown(112,120,150)}${arrowDown(208,120,150)}
+    <text class="dg-key" x="160" y="28" text-anchor="middle">P</text>
+    <text class="dg-txt" x="248" y="86" >Fi</text>
+    <path class="dg-dim" d="M243,72 L243,112 M238,72 L248,72 M238,112 L248,112"/>
+    <text class="dg-txt" x="160" y="176" text-anchor="middle">preload Fi clamps, P pulls the joint apart</text>
+   </svg>`,
+   fields:[{k:"P",label:"P",x:50,y:9},{k:"C",label:"C",x:22,y:49}],
+   caption:"C is the bolt's share of P; the rest unloads the clamped faces."};
+ },
+
+ pressure(v){
+  let arr="";
+  for(const a of [0,45,90,135,180,225,270,315]){
+   const r1=14,r2=40,rad=a*Math.PI/180;
+   arr+=`<path class="dg-load" d="M${160+r1*Math.cos(rad)},${84+r1*Math.sin(rad)}
+     L${160+r2*Math.cos(rad)},${84+r2*Math.sin(rad)}"/>`;
+  }
+  return {svg:`<svg ${VB}>
+    <circle class="dg-body" cx="160" cy="84" r="52"/>
+    <circle cx="160" cy="84" r="44" fill="var(--card)" stroke="var(--ink)" stroke-width="1.5"/>
+    ${arr}
+    <path class="dg-dim" d="M160,32 L160,40 M156,36 L164,36"/>
+    ${dimLine(116,204,158)}
+    <text class="dg-key" x="160" y="88" text-anchor="middle">P</text>
+    <text class="dg-txt" x="222" y="52">t</text>
+    <path class="dg-dim" d="M216,60 L204,72"/>
+   </svg>`,
+   fields:[{k:"P",label:"P",x:50,y:12},{k:"t",label:"t",x:80,y:33},{k:"ID",label:"ID",x:50,y:83}],
+   caption:"Section through the wall. Pressure acts outward on the bore."};
+ },
+
+ plates(v){
+  if(v.kind==="circular"){
+   let arr="";
+   for(let x=76;x<=244;x+=24) arr+=arrowDown(x,34,60);
+   const edge=v.edge==="clamped"
+     ? hatch(60,62,92,-1)+hatch(260,62,92,1)
+     : pinSup(70).replace(/82/g,"66").replace(/98/g,"82")+rollSup(250).replace(/82/g,"66").replace(/94/g,"78").replace(/97/g,"81").replace(/101/g,"85");
+   return {svg:`<svg ${VB}>
+     <path class="dg-load" d="M64,34 L256,34"/>${arr}
+     <rect class="dg-body" x="60" y="62" width="200" height="14"/>
+     <path class="dg-defl" d="M60,76 C110,${v.edge==="clamped"?92:98} 210,${v.edge==="clamped"?92:98} 260,76"/>
+     ${edge}
+     ${dimLine(160,260,130)}
+     <text class="dg-txt" x="160" y="176" text-anchor="middle">${
+       v.edge==="clamped"?"clamped edge — max stress at the edge":"simply supported — max stress at centre"}</text>
+    </svg>`,
+    fields:[{k:"q",label:"q",x:50,y:11},{k:"t",label:"t",x:14,y:36},{k:"a",label:"a",x:66,y:68}],
+    caption:"Section through the plate. Dashed line is the deflected shape."};
+  }
+  return {svg:`<svg ${VB}>
+    <rect class="dg-body" x="56" y="42" width="208" height="98"/>
+    <path class="dg-thin" d="M56,91 L264,91 M160,42 L160,140" stroke-dasharray="4 3"/>
+    ${dimLine(56,264,158)}
+    <path class="dg-dim" d="M40,42 L40,140 M35,42 L45,42 M35,140 L45,140"/>
+    <text class="dg-key" x="160" y="96" text-anchor="middle">q</text>
+   </svg>`,
+   fields:[{k:"la",label:"a",x:50,y:83},{k:"sb",label:"b",x:12,y:48},{k:"q",label:"q",x:50,y:26}],
+   caption:"Plan view. a is the long side; coefficients key off a/b."};
+ },
+
+ cooling(v){
+  let flow="";
+  for(let x=76;x<=236;x+=40) flow+=`<path class="dg-load" d="M${x},84 L${x+22},84 M${x+16},80 L${x+22},84 L${x+16},88"/>`;
+  return {svg:`<svg ${VB}>
+    <rect class="dg-body" x="56" y="58" width="208" height="52" rx="3"/>
+    <rect x="56" y="66" width="208" height="36" fill="var(--card)" stroke="var(--ink)" stroke-width="1.5"/>
+    ${flow}
+    <path class="dg-dim" d="M40,66 L40,102 M35,66 L45,66 M35,102 L45,102"/>
+    ${dimLine(56,264,132)}
+    <text class="dg-txt" x="160" y="176" text-anchor="middle">turbulent flow is what moves the heat</text>
+   </svg>`,
+   fields:[{k:"d",label:"d",x:12,y:44},{k:"len",label:"L",x:50,y:70},{k:"gpm",label:"GPM",x:50,y:26}],
+   caption:"Developed length includes every baffle pass, not the straight-line distance."};
+ },
+};
+
+function renderDiagram(){
+  const v=state[current], D=DIAGRAMS[current];
+  const el=$("#diagram");
+  if(!D){ el.style.display="none"; return; }
+  el.style.display="";
+  let d; try{ d=D(v); }catch(e){ el.innerHTML=`<p class="dgcap">Diagram unavailable for these inputs.</p>`; return; }
+  const shown=new Set(visible(current).map(f=>f.k));
+  const fields=d.fields.filter(f=>shown.has(f.k));
+  el.innerHTML=`<p class="grouptitle">Diagram</p>
+   <div class="dgwrap">${d.svg}
+   ${fields.map(f=>{
+     const [dv,du]=conv(v[f.k],(CALCS[current].fields.find(x=>x.k===f.k)||{}).u);
+     return `<label class="dgfield" style="left:${f.x}%;top:${f.y}%">
+       <span>${f.label}</span>
+       <input data-k="${f.k}" data-dg="1" data-unit="${(CALCS[current].fields.find(x=>x.k===f.k)||{}).u||""}"
+         type="number" step="any" value="${typeof dv==="number"?+dv.toFixed(6):dv}"
+         aria-label="${f.label}"></label>`;
+   }).join("")}</div>
+   <p class="dgcap">${d.caption}</p>
+   ${/defl/.test(d.svg)?'<p class="dglegend"><span><i></i>deflected / buckled shape</span></p>':""}`;
+}
+
 let current="beams", state={};
 const $=s=>document.querySelector(s);
 
@@ -638,6 +921,7 @@ function render(){
      <button class="btn" id="reset">Reset inputs</button>
    </div>`;
 
+  renderDiagram();
   $("#copy").onclick=()=>copyMd(r);
   $("#reset").onclick=()=>{state[current]=defaults(current);render();};
 }
@@ -670,14 +954,18 @@ document.addEventListener("input",e=>{
     const u=el.dataset.unit, c=SI[u];
     if(c) v[el.dataset.k]= u==="F" ? (parseFloat(el.value)*1.8+32) : parseFloat(el.value)/c[0];
   }
-  if(el.tagName==="SELECT") render(); else {
-    const r=(()=>{try{return CALCS[current].run(v);}catch(_){return null;}})();
-    if(r) renderResultsOnly(r);
-  }
+  if(el.tagName==="SELECT") render(); else renderResultsOnly();
 });
-function renderResultsOnly(r){ const k=document.activeElement?.dataset?.k; render();
-  if(k){const el=document.querySelector(`[data-k="${k}"]`); if(el){el.focus();
-    if(el.setSelectionRange&&el.type!=="number"){} }} }
+function renderResultsOnly(){
+  // A full re-render is cheap here, but it destroys the node being typed into.
+  // Restore focus to the same field on the same side — a diagram field must not
+  // hand focus to the sidebar field that shares its key.
+  const a=document.activeElement, k=a?.dataset?.k, dg=a?.dataset?.dg;
+  render();
+  if(!k) return;
+  const el=document.querySelector(dg?`[data-k="${k}"][data-dg]`:`#inputs [data-k="${k}"]`);
+  if(el) el.focus();
+}
 
 $("#us").onclick=()=>setUnits(false);
 $("#si").onclick=()=>setUnits(true);

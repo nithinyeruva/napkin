@@ -209,6 +209,82 @@ tr:last-child td{border-bottom:0}
 .btn.primary{background:var(--dye);border-color:var(--dye);color:#fff}
 .btn.primary:hover{opacity:.9;color:#fff}
 
+/* Sliders */
+.slider{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:-3px 0 2px}
+.slider input[type=range]{
+  -webkit-appearance:none;appearance:none;flex:1;height:3px;border-radius:2px;
+  background:var(--rule-2);padding:0;border:0;cursor:pointer;
+}
+.slider input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--dye);border:2px solid var(--card);box-shadow:0 0 0 1px var(--dye);
+}
+.slider input[type=range]::-moz-range-thumb{
+  width:12px;height:12px;border-radius:50%;background:var(--dye);border:2px solid var(--card);
+}
+.slider input[type=range]:focus-visible{outline:2px solid var(--dye);outline-offset:3px}
+.slider button{
+  font:inherit;font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;
+  border:1px solid var(--rule-2);background:var(--card);color:var(--ink-3);
+  border-radius:4px;padding:1px 5px;cursor:pointer;
+}
+.slider button[aria-pressed="true"]{background:var(--dye);border-color:var(--dye);color:#fff}
+
+/* Sensitivity curve */
+.curve{margin-top:12px;padding-top:11px;border-top:1px solid var(--rule)}
+.curvehead{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.curvetitle{font-size:11.5px;color:var(--ink-2)}
+.curveval{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto}
+.cv-line{fill:none;stroke:var(--dye);stroke-width:2;stroke-linejoin:round}
+.cv-grid{stroke:var(--rule);stroke-width:1}
+.cv-thr{stroke-width:1;stroke-dasharray:3 3}
+.cv-dot{fill:var(--dye);stroke:var(--card);stroke-width:2}
+.cv-txt{fill:var(--ink-3);font-family:var(--mono);font-size:9px}
+
+/* Preview modal */
+.scrim{
+  position:fixed;inset:0;background:rgba(10,14,20,.55);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.modal{
+  background:var(--card);border:1px solid var(--rule);border-radius:12px;
+  width:min(760px,100%);max-height:88vh;display:flex;flex-direction:column;
+  box-shadow:0 18px 50px rgba(0,0,0,.28);
+}
+.mhead{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:14px 18px;border-bottom:1px solid var(--rule);
+}
+.mhead h3{margin:0;font-size:15.5px;font-weight:620}
+.levels{display:flex;border:1px solid var(--rule-2);border-radius:7px;overflow:hidden}
+.levels button{
+  font:inherit;font-size:11.5px;padding:4px 10px;border:0;cursor:pointer;
+  background:var(--card);color:var(--ink-2);border-right:1px solid var(--rule-2);
+}
+.levels button:last-child{border-right:0}
+.levels button[aria-pressed="true"]{background:var(--dye);color:#fff}
+.mbody{overflow:auto;padding:0}
+.mbody pre{
+  margin:0;padding:16px 18px;font-family:var(--mono);font-size:11.5px;line-height:1.65;
+  white-space:pre-wrap;word-break:break-word;color:var(--ink-2);
+}
+.mfoot{
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:12px 18px;border-top:1px solid var(--rule);
+}
+.mfoot .hint{font-size:11.5px;color:var(--ink-3);margin-right:auto;max-width:44ch;line-height:1.4}
+
+/* Findings */
+.finding{
+  display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.45;
+  padding:8px 11px;border-radius:7px;margin-top:7px;
+}
+.finding b{font-weight:600}
+.finding.alert{background:var(--fail-bg);color:var(--fail)}
+.finding.watch{background:var(--warn-bg);color:var(--warn)}
+.finding.good{background:var(--ok-bg);color:var(--ok)}
+.finding .mk{font-family:var(--mono);font-weight:700;flex:none}
+
 /* Project view */
 .pbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
 .pbar select{width:auto;min-width:190px}
@@ -896,7 +972,84 @@ function renderDiagram(){
          aria-label="${f.label}"></label>`;
    }).join("")}</div>
    <p class="dgcap">${d.caption}</p>
-   ${/defl/.test(d.svg)?'<p class="dglegend"><span><i></i>deflected / buckled shape</span></p>':""}`;
+   ${/defl/.test(d.svg)?'<p class="dglegend"><span><i></i>deflected / buckled shape</span></p>':""}
+   ${curveSvg()}`;
+}
+
+/* ---- Findings -------------------------------------------------------------
+   What is worth pointing out about a result. Deliberately rule-based, not a
+   language model: "interesting" in sizing work has exact definitions — a margin
+   that vanished, a section that is mostly along for the ride, a regime you are
+   sitting right on top of. Rules are instant, offline, and cannot invent a
+   concern that isn't there.                                                   */
+
+function findings(calc,v,r){
+  const F=[], sf=r.sf;
+  const get=l=>{const row=r.rows.find(x=>x[0]===l); return row?row[1]:null;};
+
+  if(sf!=null){
+    if(sf<1) F.push(["alert",`Fails. At SF ${sf.toFixed(2)} the stress is above yield — this breaks as drawn.`]);
+    else if(sf<1.5) F.push(["watch",`Thin margin. SF ${sf.toFixed(2)} leaves little for tolerance, material scatter, or a load you didn't plan for.`]);
+    else if(sf>5) F.push(["watch",`Heavily overbuilt at SF ${sf.toFixed(2)}. Stress scales with the section, so a good deal of this material is doing nothing — worth a look if weight or cost matters.`]);
+    else F.push(["good",`SF ${sf.toFixed(2)} — a normal working margin for static loading.`]);
+  }
+
+  if(calc==="beams"){
+    const d=get("Max deflection"), a=get(`Allowable L/${v.limit}`);
+    if(d!=null&&a){
+      const util=d/a;
+      if(util>1) F.push(["alert",`Stiffness governs, not strength. Deflection is ${util.toFixed(1)}× the L/${v.limit} limit — a stronger material won't help, you need more I.`]);
+      else if(util>0.8&&sf>2) F.push(["watch",`Deflection is at ${(util*100).toFixed(0)}% of its limit while stress has plenty of margin — this is a stiffness problem, so chase moment of inertia rather than yield strength.`]);
+    }
+    const S=get("Section modulus S"), req=r.solved&&r.solved[0]&&r.solved[0][1];
+    if(S&&req&&S>req*2.5) F.push(["watch",`The section is ${(S/req).toFixed(1)}× the modulus needed for SF ${v.sf}. Dropping a size is on the table.`]);
+  }
+
+  if(calc==="columns"){
+    const sl=get("Slenderness KL/r"), Cc=get("Transition Cc");
+    if(sl&&Cc&&Math.abs(sl-Cc)/Cc<0.12)
+      F.push(["watch",`Sitting right on the Euler/Johnson transition (KL/r ${sl.toFixed(0)} vs Cc ${Cc.toFixed(0)}). Small changes in length or end fixity flip which equation governs — don't design to the edge here.`]);
+    if(sf!=null&&sf>=1.5&&sf<3)
+      F.push(["watch",`Buckling gives no warning before it happens, so the usual target is SF 3+, not the 1.5 you'd accept on a yield check.`]);
+  }
+
+  if(calc==="cooling"){
+    const Re=get("Reynolds"), V=get("Velocity"), m=get("Pump margin");
+    if(Re>3000&&Re<6000) F.push(["watch",`Re ${Math.round(Re).toLocaleString()} sits in the transition band. Flow here is unstable — heat transfer varies run to run. Push past 10,000 if the cooling matters.`]);
+    if(Re>=10000) F.push(["good",`Fully turbulent at Re ${Math.round(Re).toLocaleString()} — this is where the heat transfer you want lives.`]);
+    if(m!=null&&m>0&&m<1.5) F.push(["watch",`Only ${m.toFixed(2)} psi of pump margin. Any added fitting or fouling puts this circuit short.`]);
+    if(V&&V>8) F.push(["watch",`${V.toFixed(1)} ft/s is fast — erosion becomes a real wear mechanism above about 10.`]);
+  }
+
+  if(calc==="pressure"){
+    const r_=get("Radius r");
+    if(r_&&v.t>r_/10*0.85&&v.t<=r_/10)
+      F.push(["watch",`Wall is close to the r/10 thin-wall limit. The numbers are still valid but the assumption is nearly spent.`]);
+    const per=get("Tensile load per bolt");
+    if(per) F.push(["good",`Each cover bolt carries ${fmt(per)} lbf — take that to the Bolts calculator as the external load P.`]);
+  }
+
+  if(calc==="bolts"){
+    const sep=get("Separation factor"), lf=get("Load factor to yield");
+    if(sep!=null&&sep<2) F.push(["watch",`The joint opens at only ${sep.toFixed(2)}× the applied load. Separation, not bolt failure, is what governs here — raise preload or add bolts.`]);
+    if(sep!=null&&lf!=null&&sep<lf)
+      F.push(["good",`Separation (${sep.toFixed(1)}×) comes before yield (${lf.toFixed(1)}×) — the joint warns you by leaking or fretting before the bolt lets go, which is the behaviour you want.`]);
+  }
+
+  if(calc==="plates"){
+    const d=get("Max deflection");
+    if(d!=null&&d>v.t*0.35&&d<=v.t/2)
+      F.push(["watch",`Deflection is ${(d/v.t*100).toFixed(0)}% of thickness — approaching where membrane action takes over and these formulas turn conservative.`]);
+  }
+
+  if(calc==="shafts"){
+    const tau=get("Torsional shear"), sb=get("Bending stress");
+    if(tau&&sb){
+      if(tau>sb*2) F.push(["good",`Torsion dominates (${(tau/sb).toFixed(1)}× the bending stress) — this is a torque-driven design.`]);
+      else if(sb>tau*2) F.push(["good",`Bending dominates (${(sb/tau).toFixed(1)}× the shear) — support spacing matters more than torque capacity here.`]);
+    }
+  }
+  return F;
 }
 
 /* ---- Projects -------------------------------------------------------------
@@ -1080,6 +1233,7 @@ function buildNav(){
      <li><button data-c="__project" ${current==="__project"?'aria-current="true"':""}>Project
        <span class="savedcount">${n}</span></button></li>`;
   $("#nav").onclick=e=>{const b=e.target.closest("button"); if(!b)return;
+   if(b.dataset.c!==current) sweepKey=null;  // a key from one calc means nothing in another
    current=b.dataset.c; buildNav(); render();};
 }
 
@@ -1098,7 +1252,7 @@ function render(){
     const [dv,du]=conv(val,f.u);
     return `<div class="field"><label for="i-${f.k}">${f.l}${f.u?` <span class="u">${du||f.u}</span>`:""}</label>
       <input id="i-${f.k}" data-k="${f.k}" data-unit="${f.u||""}" type="number" step="any" value="${
-        typeof dv==="number"?+dv.toFixed(6):dv}"></div>`;
+        typeof dv==="number"?+dv.toFixed(6):dv}"></div>${sliderFor(f)}`;
    }).join("")}</fieldset>`;
 
   let r;
@@ -1127,18 +1281,179 @@ function render(){
      <div class="formula">${r.formula}</div>
      ${r.warn.map(([k,t])=>`<div class="note ${k}">${t}</div>`).join("")}
    </div>
+   ${(()=>{const F=findings(current,v,r); return F.length?`<div class="group">
+     <p class="grouptitle">What stands out</p>
+     ${F.map(([k,t])=>`<div class="finding ${k}"><span class="mk">${
+       k==="alert"?"!":k==="watch"?"~":"+"}</span><span>${t}</span></div>`).join("")}
+   </div>`:"";})()}
    ${r.solved?`<div class="group"><p class="grouptitle">Sized for SF ${v.sf}</p>
      <div class="tablewrap"><table><tbody>${r.solved.map(row).join("")}</tbody></table></div></div>`:""}
    <div class="actions">
      <button class="btn primary" id="save">Save to project</button>
-     <button class="btn" id="copy">Copy as markdown</button>
+     <button class="btn" id="preview">Preview &amp; copy…</button>
      <button class="btn" id="reset">Reset inputs</button>
    </div>`;
 
   renderDiagram();
   $("#save").onclick=saveEntry;
-  $("#copy").onclick=()=>copyMd(r);
+  $("#preview").onclick=openPreview;
   $("#reset").onclick=()=>{state[current]=defaults(current);render();};
+}
+
+/* ---- Export at four levels of detail --------------------------------------
+   answer   one line, for a slide
+   standard inputs, formula, headline results — a white-paper paragraph
+   full     every intermediate, the back-solve, the assumptions
+   claude   full, plus the context a model needs to write prose about it     */
+
+const LEVELS=[["answer","Answer"],["standard","Standard"],["full","Full work"],["claude","For Claude"]];
+
+function exportMd(level,calcKey,inputs){
+  const key=calcKey||current, c=CALCS[key];
+  const v=inputs?{...defaults(key),...inputs}:state[key];
+  const r=c.run(v);
+  const F=findings(key,v,r);
+  const fields=c.fields.filter(f=>!f.show||f.show(v));
+  const lbl=f=>f.t==="select"?(f.o.find(o=>String(o[0])===String(v[f.k]))||[,v[f.k]])[1]:v[f.k];
+  const head=r.rows.filter(([,x])=>typeof x==="number");
+  const L=[];
+
+  if(level==="answer"){
+    // lowercase only the leading letter — "Max moment M" must not become "max moment m"
+    const bits=head.slice(0,2).map(([l,x,u])=>`${l[0].toLowerCase()+l.slice(1)} ${fmt(x)} ${u}`).join(", ");
+    L.push(`**${c.title}** — ${bits}${r.sf!=null?`, safety factor **${r.sf.toFixed(2)}** (${word(r.sf)})`:""}.`);
+    return L.join("\n");
+  }
+
+  L.push(`### ${c.title}`,"");
+  if(level==="claude"){
+    L.push(`<!-- Napkin — preliminary sizing. ${c.reference||"Shigley / Roark closed-form."}`,
+      `     Static, elastic, small-deflection, room temperature. US customary.`,
+      `     This is a first-pass check, NOT fatigue, stress concentration, or code work. -->`,"");
+  }
+  L.push("**Inputs**","","| Input | Value | Unit |","| --- | --- | --- |");
+  for(const f of fields) L.push(`| ${f.l} | ${lbl(f)} | ${f.u||""} |`);
+  L.push("",`\`${r.formula}\``,"");
+  L.push("**Results**","","| Result | Value | Unit |","| --- | --- | --- |");
+  const rows=level==="standard"?r.rows.slice(0,5):r.rows;
+  for(const [l,x,u] of rows) L.push(`| ${l} | ${fmt(x)} | ${u} |`);
+  if(r.sf!=null) L.push(`| **Safety factor** | **${r.sf.toFixed(2)}** | ${word(r.sf)} |`);
+  if(level!=="standard"&&r.solved){
+    L.push("",`**Sized for SF ${v.sf}**`,"","| Quantity | Value | Unit |","| --- | --- | --- |");
+    for(const [l,x,u] of r.solved) L.push(`| ${l} | ${fmt(x)} | ${u} |`);
+  }
+  if(F.length){
+    L.push("","**What stands out**","");
+    for(const [k,t] of F) L.push(`- ${k==="alert"?"**":""}${t}${k==="alert"?"**":""}`);
+  }
+  if(r.warn.length){ L.push(""); for(const [,t] of r.warn) L.push(`> ${t}`); }
+  if(level==="claude"){
+    L.push("","**For the model**","",
+      "- Every number above is computed, not estimated — quote them as given.",
+      "- The safety factor is on yield, static loading only.",
+      "- Items under *What stands out* are the engineering judgement worth expanding on; the rest is arithmetic.",
+      "- If asked to write this up, lead with what governs the design, then the margin, then what would change it.");
+  }
+  return L.join("\n");
+}
+
+let previewLevel="standard";
+function openPreview(){
+  const scrim=document.createElement("div");
+  scrim.className="scrim"; scrim.setAttribute("role","dialog"); scrim.setAttribute("aria-label","Preview export");
+  const draw=()=>{
+    scrim.innerHTML=`<div class="modal">
+      <div class="mhead"><h3>Preview</h3>
+        <div class="levels" role="group" aria-label="Detail level">${LEVELS.map(([k,l])=>
+          `<button data-l="${k}" aria-pressed="${k===previewLevel}">${l}</button>`).join("")}</div>
+      </div>
+      <div class="mbody"><pre>${esc(exportMd(previewLevel))}</pre></div>
+      <div class="mfoot">
+        <span class="hint">${
+          previewLevel==="answer"?"One sentence — for a slide or a caption.":
+          previewLevel==="standard"?"Inputs, formula and headline numbers. The white-paper default.":
+          previewLevel==="full"?"Every intermediate, the back-solve, and the assumptions.":
+          "Full work plus the framing a model needs to write prose about it without inventing anything."}</span>
+        <button class="btn" data-x="close">Close</button>
+        <button class="btn primary" data-x="copy">Copy</button>
+      </div></div>`;
+  };
+  draw();
+  scrim.onclick=e=>{
+    if(e.target===scrim||e.target.dataset.x==="close"){scrim.remove();document.removeEventListener("keydown",esckey);return;}
+    const l=e.target.dataset.l;
+    if(l){previewLevel=l;draw();return;}
+    if(e.target.dataset.x==="copy")
+      navigator.clipboard.writeText(exportMd(previewLevel))
+        .then(()=>{toast("Copied");scrim.remove();document.removeEventListener("keydown",esckey);})
+        .catch(()=>toast("Copy failed"));
+  };
+  const esckey=e=>{if(e.key==="Escape"){scrim.remove();document.removeEventListener("keydown",esckey);}};
+  document.addEventListener("keydown",esckey);
+  document.body.appendChild(scrim);
+}
+
+/* ---- Sliders and the sensitivity curve ------------------------------------
+   Typing a number answers "what is it here". Dragging answers "which way does
+   it go, and how fast" — which is usually the question you actually have.    */
+
+const SLIDE={
+ beams:{L:[4,120],P:[0,4000],w:[0,150],b:[.125,6],h:[.125,8],d:[.125,6],od:[.25,8],
+   H:[1,12],B:[.5,8],tf:[.06,1],tw:[.06,1]},
+ plates:{a:[.5,12],la:[1,24],sb:[1,24],q:[0,1500],t:[.03,3]},
+ columns:{L:[2,120],P:[0,30000],b:[.125,6],h:[.125,6],d:[.125,6],od:[.25,8]},
+ shafts:{d:[.125,4],M:[0,4000],hp:[0,100],rpm:[100,6000],L:[1,60]},
+ bolts:{frac:[.3,.95],P:[0,12000],C:[.05,.6],V:[0,8000]},
+ pressure:{ID:[.5,36],t:[.02,2],P:[0,3000]},
+ cooling:{d:[.125,2],gpm:[.1,20],len:[1,80],temp:[50,180],K:[0,30]},
+ sections:{b:[.125,6],h:[.125,8],d:[.125,6],od:[.25,8],H:[1,12],B:[.5,8]},
+};
+let sweepKey=null;
+
+function sliderFor(f){
+  const rng=(SLIDE[current]||{})[f.k];
+  if(!rng||f.t==="select") return "";
+  const v=state[current][f.k];
+  const [lo,hi]=rng, step=(hi-lo)/200;
+  return `<div class="slider">
+    <input type="range" data-slide="${f.k}" min="${lo}" max="${hi}" step="${step}"
+      value="${Math.min(Math.max(v,lo),hi)}" aria-label="${f.l} slider">
+    <button data-sweep="${f.k}" aria-pressed="${sweepKey===f.k}" title="Plot safety factor against this">plot</button>
+  </div>`;
+}
+
+function curveSvg(){
+  if(!sweepKey) return "";
+  const rng=(SLIDE[current]||{})[sweepKey]; if(!rng) return "";
+  const c=CALCS[current], base=state[current], f=c.fields.find(x=>x.k===sweepKey);
+  const [lo,hi]=rng, N=64, pts=[];
+  for(let i=0;i<=N;i++){
+    const x=lo+(hi-lo)*i/N;
+    let sf=null; try{ sf=c.run({...base,[sweepKey]:x}).sf; }catch(_){}
+    if(sf!=null&&isFinite(sf)&&sf>0) pts.push([x,Math.min(sf,6)]);
+  }
+  if(pts.length<3) return "";
+  const W=300,H=92,PL=26,PR=6,PT=8,PB=16;
+  const sx=x=>PL+(x-lo)/(hi-lo)*(W-PL-PR);
+  const sy=s=>PT+(1-s/6)*(H-PT-PB);
+  const path=pts.map(([x,s],i)=>`${i?"L":"M"}${sx(x).toFixed(1)},${sy(s).toFixed(1)}`).join("");
+  const cur=base[sweepKey];
+  let curSf=null; try{ curSf=c.run(base).sf; }catch(_){}
+  const thr=(s,col)=>`<line class="cv-thr" x1="${PL}" y1="${sy(s)}" x2="${W-PR}" y2="${sy(s)}" stroke="${col}"/>`;
+  return `<div class="curve">
+    <div class="curvehead"><span class="curvetitle">Safety factor vs ${esc(f.l)}</span>
+      <span class="curveval">${curSf!=null?curSf.toFixed(2):"—"} at ${fmt(cur)} ${f.u||""}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+      <line class="cv-grid" x1="${PL}" y1="${sy(0)}" x2="${W-PR}" y2="${sy(0)}"/>
+      ${thr(1,"var(--fail)")}${thr(1.5,"var(--warn)")}
+      <text class="cv-txt" x="${PL-4}" y="${sy(1)+3}" text-anchor="end">1.0</text>
+      <text class="cv-txt" x="${PL-4}" y="${sy(1.5)+3}" text-anchor="end">1.5</text>
+      <path class="cv-line" d="${path}"/>
+      ${curSf!=null&&isFinite(curSf)?`<circle class="cv-dot" cx="${sx(Math.min(Math.max(cur,lo),hi)).toFixed(1)}"
+        cy="${sy(Math.min(curSf,6)).toFixed(1)}" r="4"/>`:""}
+      <text class="cv-txt" x="${PL}" y="${H-4}">${fmt(lo)}</text>
+      <text class="cv-txt" x="${W-PR}" y="${H-4}" text-anchor="end">${fmt(hi)} ${esc(f.u||"")}</text>
+    </svg></div>`;
 }
 
 function copyMd(r){
@@ -1162,7 +1477,16 @@ function copyMd(r){
 }
 
 document.addEventListener("input",e=>{
-  const el=e.target; if(!el.dataset.k||!state[current]) return;
+  const el=e.target;
+  if(el.dataset.slide&&state[current]){
+    // Sliders are always in native US units — they bypass the metric conversion
+    // the typed fields go through.
+    state[current][el.dataset.slide]=parseFloat(el.value);
+    const k=el.dataset.slide; render();
+    const s=document.querySelector(`[data-slide="${k}"]`); if(s) s.focus();
+    return;
+  }
+  if(!el.dataset.k||!state[current]) return;
   const v=state[current];
   v[el.dataset.k]=el.type==="number"?parseFloat(el.value)||0:el.value;
   if(metric&&el.dataset.unit){
@@ -1181,6 +1505,12 @@ function renderResultsOnly(){
   const el=document.querySelector(dg?`[data-k="${k}"][data-dg]`:`#inputs [data-k="${k}"]`);
   if(el) el.focus();
 }
+
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-sweep]"); if(!b) return;
+  sweepKey = sweepKey===b.dataset.sweep ? null : b.dataset.sweep;
+  render();
+});
 
 $("#us").onclick=()=>setUnits(false);
 $("#si").onclick=()=>setUnits(true);

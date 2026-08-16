@@ -1343,15 +1343,15 @@ function renderProject(){
      <button class="btn sm" id="prename">Rename</button>
      <span class="espacer"></span>
      <button class="btn sm" id="pcopy">Copy all as markdown</button>
-     <button class="btn sm" id="pdl">Save .md file</button>
-     <button class="btn sm" id="pnotion">Send to Notion</button>
+     ${HAS_DL?'<button class="btn sm" id="pdl">Save .md file</button>':""}
+     ${HAS_MCP?'<button class="btn sm" id="pnotion">Send to Notion</button>':""}
      <button class="btn sm danger" id="pdel">Delete project</button>
    </div>
-   <div class="group" style="margin-bottom:12px">
+   ${HAS_MCP?`<div class="group" style="margin-bottom:12px">
      <p class="grouptitle">Notion parent page</p>
      <div class="field wide"><label for="np">Paste a Notion page URL. New pages land inside it; leave it empty and they're created as private workspace pages.</label>
        <input id="np" type="text" placeholder="https://notion.so/…" value="${esc(notionParent())}"></div>
-   </div>
+   </div>`:""}
    ${p.entries.length?p.entries.map(e=>{
      const c=CALCS[e.calc];
      return `<div class="entry" data-id="${e.id}">
@@ -1383,9 +1383,9 @@ function renderProject(){
   $("#pcopy").onclick=()=>navigator.clipboard.writeText(projectMarkdown())
     .then(()=>toast("Project copied — paste it into a Claude project"))
     .catch(()=>toast("Copy failed"));
-  $("#pdl").onclick=downloadProject;
-  $("#pnotion").onclick=e=>sendToNotion(p.name,projectMarkdown(),e.target);
-  $("#np").oninput=e=>setNotionParent(e.target.value.trim());
+  if($("#pdl")) $("#pdl").onclick=downloadProject;
+  if($("#pnotion")) $("#pnotion").onclick=e=>sendToNotion(p.name,projectMarkdown(),e.target);
+  if($("#np")) $("#np").oninput=e=>setNotionParent(e.target.value.trim());
 
   for(const t of document.querySelectorAll(".enote")){
     autoGrow(t);
@@ -1407,6 +1407,16 @@ function autoGrow(t){t.style.height="auto";t.style.height=Math.max(38,t.scrollHe
    properties:{title}, icon, content}]} and returns {pages:[{id,url,...}]}.
    The parent page is entered by the user and kept in localStorage — no page id
    from anyone's workspace is baked into this file.                           */
+
+// Notion and file-save come from the Claude artifact runtime. Self-hosted, that
+// runtime isn't there — probe once at load and hide those affordances rather
+// than offering buttons that can only fail.
+let HAS_MCP=false, HAS_DL=false;
+async function probeCapabilities(){
+  try{ HAS_MCP = !!(await (window.claude?.use?.("mcp") ?? null)); }catch(_){}
+  try{ HAS_DL  = !!(await (window.claude?.use?.("downloads") ?? null)); }catch(_){}
+  if(HAS_MCP||HAS_DL) render();
+}
 
 const NOTION_SERVER="claude_ai_Notion";
 const notionParent=()=>{ try{return localStorage.getItem("napkin.notionParent")||"";}catch(_){return "";} };
@@ -1613,7 +1623,7 @@ function openPreview(){
           previewLevel==="full"?"Every intermediate, the back-solve, and the assumptions.":
           "Full work plus the framing a model needs to write prose about it without inventing anything."}</span>
         <button class="btn" data-x="close">Close</button>
-        <button class="btn" data-x="notion">Send to Notion</button>
+        ${HAS_MCP?'<button class="btn" data-x="notion">Send to Notion</button>':""}
         <button class="btn primary" data-x="copy">Copy</button>
       </div></div>`;
   };
@@ -1798,5 +1808,5 @@ function selfCheck(){
 }
 
 for(const k of Object.keys(CALCS)) state[k]=defaults(k);
-loadDB(); buildNav(); render(); selfCheck();
+loadDB(); buildNav(); render(); selfCheck(); probeCapabilities();
 </script>

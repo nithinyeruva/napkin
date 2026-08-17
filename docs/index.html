@@ -1780,7 +1780,7 @@ function renderStart(){
      <div class="ai-set">
        <button class="ai-toggle" id="aitog" aria-expanded="${aiOpen}">
          <span class="dot${aiOn()?" on":""}"></span>
-         AI assist ${aiOn()?"on":AI?"no key on the server":"off"} — ${aiOpen?"hide":"details"}
+         AI assist ${aiOn()?"on":AI?"off — no key on the server":"off — run napkin locally"} — ${aiOpen?"hide":"details"}
        </button>
        ${aiOpen?`<div class="ai-body">${aiOn()?aiPanel():`
          <p>Rules handle most descriptions on their own. Anything they can't place

@@ -1653,11 +1653,24 @@ const money=n=>n==null?"—":(n<0.01&&n>0?`$${n.toFixed(4)}`:`$${n.toFixed(2)}`)
 
 // The model may only return field keys that actually exist on the calculator it
 // picked, so a hallucinated field name can't reach the UI.
+// A field key alone is not enough to fill it correctly — "sb" told the model
+// nothing, and it put a thickness there. Send the label and the unit, and spell
+// out the fields that only apply under a particular choice.
+function conditionOf(c,f){
+  if(!f.show) return "";
+  const on=[];
+  for(const s of c.fields) if(s.t==="select")
+    for(const [ov] of s.o){ try{ if(f.show({[s.k]:ov})) on.push(`${s.k}=${ov}`); }catch(_){} }
+  return on.length&&on.length<c.fields.filter(x=>x.t==="select")
+    .reduce((n,s)=>n+s.o.length,0) ? ` — only when ${on.join(" or ")}` : "";
+}
 function aiSchema(){
   const calcs=Object.entries(CALCS).map(([k,c])=>
-    `${k}: ${c.title}. Fields — ${c.fields.map(f=>
-      f.t==="select"?`${f.k} (one of: ${f.o.map(o=>o[0]).join("|")})`
-                    :`${f.k}${f.u?` [${f.u}]`:""}`).join(", ")}`).join("\n");
+    `${k}: ${c.title}. ${c.desc||""}\n  Fields — ${c.fields.map(f=>
+      f.t==="select"
+        ? `${f.k} "${f.l}" (one of: ${f.o.map(o=>o[0]).join("|")})${conditionOf(c,f)}`
+        : `${f.k} "${f.l}"${f.u?` [${f.u}]`:""}${conditionOf(c,f)}`
+      ).join("\n           ")}`).join("\n");
   return {calcs};
 }
 
@@ -1699,7 +1712,16 @@ async function aiRoute(text){
       assumptions.push({field:row.field,why:row.why||"predicted"});
     }
   }
-  return {calc:out.calculator,confidence:out.confidence,values,predicted,assumptions,
+  // A rectangular plate has no radius. Drop anything the chosen options hide,
+  // or it turns up as a stray predicted value on a field you can't even see.
+  for(const f of c.fields){
+    if(!f.show||!(f.k in values)) continue;
+    let vis=true; try{ vis=!!f.show({...defaults(out.calculator),...values}); }catch(_){}
+    if(!vis) delete values[f.k];
+  }
+  const live=k=>k in values;
+  return {calc:out.calculator,confidence:out.confidence,values,
+    predicted:predicted.filter(live),assumptions:assumptions.filter(a=>live(a.field)),
     unclear:out.unclear||null,cost,source:"ai"};
 }
 

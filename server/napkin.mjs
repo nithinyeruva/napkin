@@ -122,7 +122,10 @@ Rules:
 - All values are US customary: inches, lbf, psi, F, BTU/hr, GPM, RPM, HP. Convert if the user writes metric.
 - "value" is the number alone as a string ("8", "0.125"), or for a select field one of its listed options exactly.
 - "predicted" is the most important thing you produce — an engineer will trust an unmarked value. Set it false only when the user actually stated the value (loosely counts: "about 8 inches" is stated). Set it true when you supplied it from typical practice or derived it from something else they said.
-- Only predict a value when a sensible default genuinely exists. Leave it out rather than guessing wildly. Fewer, better guesses.
+- Once you have picked a calculator, fill in every field. The engineer should land on a working starting point they can correct, not on empty boxes — an unfilled form is the least useful thing you can return. Every guess is marked and listed before it is used, so predicting is safe; staying silent is not.
+- Predict from typical practice for the application described, and be concrete. Only leave a field out when there is genuinely no defensible starting value even loosely.
+- If the user is asking you to size the thing itself (a wall thickness, a diameter), still put a plausible first value in it — that is what gets checked and iterated.
+- Never predict 0 for a load, pressure, or dimension. A zero makes the result meaningless rather than approximate. Estimate a real magnitude from the application, or leave that field out entirely.
 - "why" is required on predicted values: the actual reason an engineer would accept it ("typical wall for a 4 in vessel at this pressure"), not "commonly used". Use "" when predicted is false.
 - "unclear" is one short sentence naming what you'd need to know, or "" if nothing is missing.`;
 

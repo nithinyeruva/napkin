@@ -6,3 +6,7 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# server-side secrets and local spend ledger — never committed
+server/.env
+server/state.json

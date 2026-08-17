@@ -354,6 +354,19 @@ tr:last-child td{border-bottom:0}
 .ai-body a{color:var(--dye)}
 .ai-row{display:flex;gap:6px}
 .ai-row input{flex:1;font-family:var(--mono);font-size:12px}
+.ai-body code{font-family:var(--mono);font-size:11px;background:var(--sunk);
+  padding:1px 4px;border-radius:3px}
+.aif{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3);margin-bottom:6px}
+.aif select{flex:1;font-size:12px}
+.aihint{font-size:11px!important;color:var(--ink-3);opacity:.85}
+.aigrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
+.aigrid div{background:var(--sunk);border:1px solid var(--rule);border-radius:6px;
+  padding:7px 8px;text-align:center}
+.aigrid b{display:block;font-family:var(--mono);font-size:13px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.aigrid span{display:block;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-3);margin-top:2px}
+.aigrid .low b{color:var(--fail)}
 .thinking{
   display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);
 }
@@ -1617,10 +1630,26 @@ function parseQuery(text){
    blocks every external request, so `fetch` to the API is impossible there. The
    feature is additive — no key, no network, no problem.                       */
 
-const AI_MODEL="claude-haiku-4-5";
-const keyGet=()=>{try{return localStorage.getItem("napkin.anthropicKey")||"";}catch(_){return "";}};
-const keySet=v=>{try{v?localStorage.setItem("napkin.anthropicKey",v)
-  :localStorage.removeItem("napkin.anthropicKey");}catch(_){}};
+/* The key lives on the server, never here. This page asks a local napkin
+   process to do the routing; that process holds the key. Opened from GitHub
+   Pages or as an artifact there is no such process, /api/health fails, and the
+   whole AI path stays dark — rules still do the work. */
+
+let AI=null;                       // server summary, or null when there's no server
+const aiOn=()=>!!(AI&&AI.ai);
+async function aiProbe(){
+  try{
+    const r=await fetch("api/health",{cache:"no-store"});
+    AI = r.ok ? await r.json() : null;
+  }catch(_){ AI=null; }
+}
+async function aiSettings(patch){
+  const r=await fetch("api/settings",{method:"POST",
+    headers:{"content-type":"application/json"},body:JSON.stringify(patch)});
+  if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||"failed");
+  AI={...AI,...await r.json()};
+}
+const money=n=>n==null?"—":(n<0.01&&n>0?`$${n.toFixed(4)}`:`$${n.toFixed(2)}`);
 
 // The model may only return field keys that actually exist on the calculator it
 // picked, so a hallucinated field name can't reach the UI.
@@ -1632,93 +1661,84 @@ function aiSchema(){
   return {calcs};
 }
 
-const AI_SYSTEM=`You route mechanical engineering sizing questions to a calculator and pre-fill what you can.
-
-Calculators and their exact field keys:
-{{CALCS}}
-
-Rules:
-- Pick the single best calculator. If genuinely unsure, say so in "unclear".
-- "values" may only use field keys listed for the calculator you picked.
-- All values are US customary: inches, lbf, psi, F, BTU/hr, GPM, RPM, HP. Convert if the user writes metric.
-- "predicted" must list every field key in "values" that you inferred rather than read from the text. This is the most important field you produce — an engineer will trust an unmarked value.
-- A value is READ if the user stated it (even loosely: "about 8 inches" is read). It is PREDICTED if you supplied it from typical practice, or derived it from something else they said.
-- Only predict a value when a sensible default genuinely exists. Leave it out rather than guessing wildly. Fewer, better guesses.
-- For each predicted value give a short "why" — the actual reason an engineer would accept it ("typical wall for a 4 in vessel at this pressure"), not "commonly used".
-- "unclear" is one short sentence naming what you'd need to know, or null.`;
-
 async function aiRoute(text){
-  const key=keyGet(); if(!key) return null;
+  if(!aiOn()) return null;
   const {calcs}=aiSchema();
-  const res=await fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{
-      "content-type":"application/json",
-      "x-api-key":key,
-      "anthropic-version":"2023-06-01",
-      // Without this the browser request is refused outright.
-      "anthropic-dangerous-direct-browser-access":"true",
-    },
-    body:JSON.stringify({
-      model:AI_MODEL,
-      max_tokens:700,
-      system:AI_SYSTEM.replace("{{CALCS}}",calcs),
-      messages:[{role:"user",content:text}],
-      output_config:{format:{type:"json_schema",schema:{
-        type:"object",
-        properties:{
-          calculator:{type:"string",enum:Object.keys(CALCS)},
-          confidence:{type:"string",enum:["high","medium","low"]},
-          values:{type:"object",additionalProperties:{type:["string","number"]}},
-          predicted:{type:"array",items:{type:"string"}},
-          assumptions:{type:"array",items:{type:"object",
-            properties:{field:{type:"string"},why:{type:"string"}},
-            required:["field","why"],additionalProperties:false}},
-          unclear:{type:["string","null"]},
-        },
-        required:["calculator","confidence","values","predicted","assumptions","unclear"],
-        additionalProperties:false,
-      }}},
-    }),
+  const res=await fetch("api/route",{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({text,catalog:calcs,calculators:Object.keys(CALCS)}),
   });
 
   if(!res.ok){
-    // Anthropic puts the useful part in the body. Without it a 400 is
-    // indistinguishable from any other 400, which is no help to anyone.
-    let detail=""; try{ const b=await res.json(); detail=b?.error?.message||""; }catch(_){}
-    const e=new Error("api"); e.status=res.status; e.detail=detail;
-    if(res.status===401) e.msg="That API key was rejected. Check it in settings.";
+    const b=await res.json().catch(()=>({}));
+    const e=new Error("api"); e.status=res.status;
+    if(res.status===401) e.msg="The server's API key was rejected.";
     else if(res.status===429) e.msg="Rate limited — try again in a moment.";
-    else if(res.status===400) e.msg="Anthropic rejected the request.";
-    else e.msg=`Anthropic returned ${res.status}.`;
-    if(detail) e.msg+=` — ${detail}`;
-    console.error("napkin ai:",res.status,detail||"(no detail in body)");
+    else if(res.status===503) e.msg=b.error||"The server has no API key.";
+    else e.msg=`Anthropic returned ${res.status}${b.error?` — ${b.error}`:""}.`;
+    console.error("napkin ai:",res.status,b.error||"(no detail)");
     throw e;
   }
-  const data=await res.json();
-  const block=(data.content||[]).find(b=>b.type==="text");
-  if(!block) throw Object.assign(new Error("empty"),{msg:"No answer came back."});
-  let out; try{ out=JSON.parse(block.text); }
-  catch(_){ throw Object.assign(new Error("parse"),{msg:"Couldn't read the reply."}); }
+  const {out,cost,spend}=await res.json();
+  if(spend) AI={...AI,...spend};
 
-  // Discard anything that isn't a real field on the chosen calculator.
+  // Discard anything that isn't a real field on the chosen calculator, so a
+  // hallucinated field key can never reach an input box.
   const c=CALCS[out.calculator]; if(!c) return null;
   const ok=new Set(c.fields.map(f=>f.k));
-  const values={},pred=new Set((out.predicted||[]).filter(k=>ok.has(k)));
-  for(const [k,v] of Object.entries(out.values||{})){
-    if(!ok.has(k)) continue;
-    const f=c.fields.find(x=>x.k===k);
-    values[k]= f.t==="select" ? String(v) : (typeof v==="number"?v:parseFloat(v));
-    if(f.t!=="select"&&!isFinite(values[k])) delete values[k];
+  const values={},predicted=[],assumptions=[];
+  for(const row of (out.values||[])){
+    if(!row||!ok.has(row.field)) continue;
+    const f=c.fields.find(x=>x.k===row.field);
+    const v=f.t==="select" ? String(row.value) : parseFloat(row.value);
+    if(f.t==="select"){ if(!f.o.some(o=>o[0]===v)) continue; }
+    else if(!isFinite(v)) continue;
+    values[row.field]=v;
+    if(row.predicted){
+      predicted.push(row.field);
+      assumptions.push({field:row.field,why:row.why||"predicted"});
+    }
   }
-  return {calc:out.calculator,confidence:out.confidence,values,
-    predicted:[...pred].filter(k=>k in values),
-    assumptions:(out.assumptions||[]).filter(a=>ok.has(a.field)&&a.field in values),
-    unclear:out.unclear||null, source:"ai"};
+  return {calc:out.calculator,confidence:out.confidence,values,predicted,assumptions,
+    unclear:out.unclear||null,cost,source:"ai"};
 }
 
 // Which fields on the current calculator are model guesses. Cleared on edit.
 let predictedNow={};
+
+// Model choice and what it has cost. Anthropic publishes no endpoint for a
+// remaining credit balance, so "left" counts down from a figure you enter —
+// and only counts napkin's own calls, not Claude Code or anything else on the
+// same account. The panel says that rather than implying a live balance.
+function aiPanel(){
+  const m=(AI.models||[]).find(x=>x.id===AI.model)||{};
+  const per=AI.calls?AI.spent/AI.calls:0;
+  return `
+    <p>Rules handle most descriptions on their own. Anything they can't place
+       goes to the model, which can also fill in values it infers — always
+       marked as predicted. The key stays on the server; this page never sees it.</p>
+    <label class="aif">Model
+      <select id="aimodel">${(AI.models||[]).map(x=>
+        `<option value="${x.id}"${x.id===AI.model?" selected":""}>${x.label} — $${x.in}/$${x.out} per Mtok</option>`).join("")}</select>
+    </label>
+    <p class="aihint">${esc(m.note||"")}${m.intro?" · introductory pricing":""}
+       · about ${money(per||0.002)} a call at this size.</p>
+    <div class="aigrid">
+      <div><b>${money(AI.spent)}</b><span>napkin total</span></div>
+      <div><b>${money(AI.month)}</b><span>this month</span></div>
+      <div><b>${AI.calls}</b><span>calls</span></div>
+      <div class="${AI.left!=null&&AI.left<1?"low":""}"><b>${AI.left==null?"—":money(AI.left)}</b><span>credits left</span></div>
+    </div>
+    <div class="ai-row">
+      <input id="ailoaded" type="number" step="1" min="0" placeholder="25"
+        value="${AI.loaded||""}" aria-label="Credits loaded">
+      <button class="btn sm" id="aiload">Set credits loaded</button>
+      <button class="btn sm danger" id="aireset">Reset counter</button>
+    </div>
+    <p class="aihint">Counts down from what you enter, using napkin's own spend
+       only — it can't see the rest of your account. Check the real balance on the
+       <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Console</a>.</p>`;
+}
 
 let startText="", parsed=null, aiState=null, aiOpen=false;
 function renderStart(){
@@ -1737,24 +1757,19 @@ function renderStart(){
      </div>
      <div class="ai-set">
        <button class="ai-toggle" id="aitog" aria-expanded="${aiOpen}">
-         <span class="dot${keyGet()?" on":""}"></span>
-         AI assist ${keyGet()?"on":"off"} — ${aiOpen?"hide":"set up"}
+         <span class="dot${aiOn()?" on":""}"></span>
+         AI assist ${aiOn()?"on":AI?"no key on the server":"off"} — ${aiOpen?"hide":"details"}
        </button>
-       ${aiOpen?`<div class="ai-body">
-         <p>Rules handle most descriptions on their own. With a key, anything they
-            can't place goes to Claude Haiku, which can also fill in values it
-            infers — always marked as predicted. Roughly $0.002 a call.</p>
-         <p>The key is stored in this browser only and is sent nowhere except
-            api.anthropic.com. Anything running on this page could read it, so use a
-            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">dedicated key</a>
-            with a spend limit — not one you use elsewhere.</p>
-         <div class="ai-row">
-           <input id="aikey" type="password" placeholder="sk-ant-…" value="${esc(keyGet())}"
-             autocomplete="off" spellcheck="false" aria-label="Anthropic API key">
-           <button class="btn sm" id="aisave">Save</button>
-           ${keyGet()?'<button class="btn sm danger" id="aidel">Remove</button>':""}
-         </div>
-       </div>`:""}
+       ${aiOpen?`<div class="ai-body">${aiOn()?aiPanel():`
+         <p>Rules handle most descriptions on their own. Anything they can't place
+            can go to Claude instead — but only when napkin is served by its own
+            process, which is what holds the API key.</p>
+         <p>${AI?`The server is running but has no key. Put
+            <code>ANTHROPIC_API_KEY=sk-ant-…</code> in <code>server/.env</code> and restart it.`
+              :`You're on the hosted copy, so there's no server here. Run
+            <code>npm start</code> in the napkin folder and open
+            <code>localhost:8787</code>.`}</p>
+         <p>The key never reaches this page either way.</p>`}</div>`:""}
      </div>
    </div>
    ${aiState==="loading"?`<div class="group"><span class="thinking">Working out what you need…</span></div>`:""}
@@ -1821,7 +1836,7 @@ function renderStart(){
     // correctly when several values came out, and calling out there is wasted money.
     const thin = !parsed.calc || parsed.read.length<2
               || (!parsed.confident && parsed.read.length<3);
-    if(!(thin&&keyGet())){ render(); return; }
+    if(!(thin&&aiOn())){ render(); return; }
     aiState="loading"; render();
     try{
       const ai=await aiRoute(startText);
@@ -1838,10 +1853,21 @@ function renderStart(){
   if($("#qclear")) $("#qclear").onclick=()=>{startText="";parsed=null;aiState=null;render();};
 
   $("#aitog").onclick=()=>{aiOpen=!aiOpen;render();};
-  if($("#aisave")) $("#aisave").onclick=()=>{
-    keySet($("#aikey").value.trim()); toast(keyGet()?"Key saved":"Key cleared"); render();
+  if($("#aimodel")) $("#aimodel").onchange=async e=>{
+    try{ await aiSettings({model:e.target.value}); toast(`Using ${AI.models.find(m=>m.id===AI.model).label}`); }
+    catch(err){ toast("Couldn't switch model"); }
+    render();
   };
-  if($("#aidel")) $("#aidel").onclick=()=>{keySet("");toast("Key removed");render();};
+  if($("#aiload")) $("#aiload").onclick=async()=>{
+    try{ await aiSettings({loaded:Number($("#ailoaded").value||0)}); toast("Balance set"); }
+    catch(_){ toast("Couldn't save that amount"); }
+    render();
+  };
+  if($("#aireset")) $("#aireset").onclick=async()=>{
+    try{ await aiSettings({loaded:Number($("#ailoaded").value||0),resetSpend:true}); toast("Counter reset"); }
+    catch(_){ toast("Couldn't reset"); }
+    render();
+  };
   if($("#qopen")) $("#qopen").onclick=()=>{
     state[p.calc]={...defaults(p.calc),...p.values};
     // Carry the guesses through — a predicted value must still look predicted
@@ -2116,7 +2142,8 @@ let HAS_MCP=false, HAS_DL=false;
 async function probeCapabilities(){
   try{ HAS_MCP = !!(await (window.claude?.use?.("mcp") ?? null)); }catch(_){}
   try{ HAS_DL  = !!(await (window.claude?.use?.("downloads") ?? null)); }catch(_){}
-  if(HAS_MCP||HAS_DL) render();
+  await aiProbe();          // is there a napkin server behind this page?
+  if(HAS_MCP||HAS_DL||AI) render();
 }
 
 const NOTION_SERVER="claude_ai_Notion";

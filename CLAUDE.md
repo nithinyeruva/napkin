@@ -49,3 +49,25 @@ guessed number in a docstring — it will fail, correctly.
   AISC design values for real end fixity.
 - Shaft results are static only. Anything rotating needs a Shigley fatigue check
   on top, which this package does not do.
+
+## The server
+
+`server/napkin.mjs` — zero-dependency Node, serves `docs/` and holds the API
+key. It exists only so the key isn't in the browser; everything else in napkin
+works without it.
+
+- The key is read from `server/.env`. **Never** move key handling into
+  `docs/index.html` — that was the original design and it was wrong.
+- `docs/index.html` probes `api/health` at load. No server, no AI, no error.
+  Every AI affordance is behind `aiOn()`.
+- Anthropic's structured outputs take a **strict subset** of JSON Schema: no
+  union types, and `additionalProperties` may only be `false`, never a schema.
+  Both rules were violated in the first version and the only symptom was an
+  opaque 400. `server/schema.mjs` exports `illegal()` — run a schema through it
+  before shipping a change to it.
+- Prices in `MODELS` are dollars per Mtok and drive the spend tracker. Sonnet 5
+  carries introductory pricing until 2026-09-01, after which `rates()` returns
+  the standard numbers on its own.
+- There is no balance endpoint at Anthropic. "Credits left" counts down from a
+  figure the user enters, over napkin's own spend only. Don't present it as a
+  live account balance.

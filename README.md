@@ -79,10 +79,45 @@ concentration at a keyway or fillet, thick-wall vessels, large-deflection plate
 behaviour, or anything code-regulated. Results carry warnings when an assumption
 stops holding — read them.
 
+## The web version
+
+`docs/index.html` is the whole app — the eight calculators, diagrams, worked
+formulas, glossary, projects and export. It's hosted at
+[nithinyeruva.github.io/napkin](https://nithinyeruva.github.io/napkin/) and needs
+nothing running to work.
+
+The start page takes a plain-language description and routes it to the right
+calculator with the values it can pick out. That's rule-based and free.
+
+### AI routing
+
+Descriptions the rules can't place can go to Claude instead, which will also
+fill in values it infers — always marked as predicted, never mixed in with what
+you actually said. That needs an API key, and the key stays on the server:
+
+```bash
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > server/.env
+npm start                     # → http://localhost:8787
+```
+
+The browser never receives the key and never talks to Anthropic directly. Open
+the hosted copy instead and the AI path simply isn't there — `/api/health`
+fails, the rules keep working, nothing else changes.
+
+Model and spend live under **AI assist** on the start page. Pick between Haiku
+4.5, Sonnet 5 and Opus 5; napkin tracks what it has spent from the token counts
+Anthropic returns. The "credits left" figure counts down from a number you
+enter — Anthropic publishes no balance endpoint, and napkin can't see spend from
+anything else on your account.
+
+Spend and key live in `server/state.json` and `server/.env`, both gitignored.
+
 ## Development
 
 ```bash
 pytest
 ```
 
-54 tests, all checked against the source workbook.
+54 tests, all checked against the source workbook. The web app re-runs 19
+exported test vectors against the Python results on every load — the footer
+shows the count.

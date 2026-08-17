@@ -1683,11 +1683,16 @@ async function aiRoute(text){
   });
 
   if(!res.ok){
-    const e=new Error("api"); e.status=res.status;
+    // Anthropic puts the useful part in the body. Without it a 400 is
+    // indistinguishable from any other 400, which is no help to anyone.
+    let detail=""; try{ const b=await res.json(); detail=b?.error?.message||""; }catch(_){}
+    const e=new Error("api"); e.status=res.status; e.detail=detail;
     if(res.status===401) e.msg="That API key was rejected. Check it in settings.";
     else if(res.status===429) e.msg="Rate limited — try again in a moment.";
     else if(res.status===400) e.msg="Anthropic rejected the request.";
     else e.msg=`Anthropic returned ${res.status}.`;
+    if(detail) e.msg+=` — ${detail}`;
+    console.error("napkin ai:",res.status,detail||"(no detail in body)");
     throw e;
   }
   const data=await res.json();
@@ -1823,6 +1828,7 @@ function renderStart(){
       if(ai){ parsed={...ai,alts:Object.keys(CALCS).filter(k=>k!==ai.calc).slice(0,3)}; aiState=null; }
       else aiState=null;
     }catch(err){
+      if(!(err&&err.msg)) console.error("napkin ai: request never completed —",err);
       aiState={err: err&&err.msg ? err.msg : "Couldn't reach Anthropic."};
     }
     render();

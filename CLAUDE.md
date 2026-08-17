@@ -7,10 +7,17 @@ calcs for preliminary sizing.
 
 Phase 1 complete: all 11 workbook sheets ported, 54 tests passing.
 
-Planned next: a web UI over the same formulas, published as an artifact so the
-calculators are usable on a phone at the mill. **The formulas must not be
-reimplemented in JavaScript** — one source of truth, or the two copies drift and
-one of them is silently wrong.
+Phase 2 complete: `docs/index.html` is the web app — eight calculators,
+diagrams, worked formulas, glossary, projects, export, and AI routing. Hosted at
+`nithinyeruva.github.io/napkin` and as a Claude artifact.
+
+The formulas **are** reimplemented in JavaScript there, which an earlier version
+of this file forbade. The ban was right about the risk and wrong about the fix:
+the browser can't run Python, so the choice was a JS copy or no web app. What
+keeps the copies honest is `docs/vectors.json` — 19 full-precision results
+exported from the Python package, re-run in the browser on every load, with the
+pass count in the footer. Drift fails visibly instead of silently. **Regenerate
+the vectors whenever a formula changes**, and never hand-edit them to match JS.
 
 ## Conventions
 
